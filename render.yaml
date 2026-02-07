@@ -1,0 +1,43 @@
+services:
+  - type: web
+    name: entertainment-tadka-bot
+    env: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    region: singapore
+    plan: free
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: BOT_TOKEN
+        sync: false
+      - key: ADMIN_ID
+        value: 1080317415
+      - key: BOT_USERNAME
+        value: EntertainmentTadkaBot
+      # Public Channels
+      - key: PUBLIC_CHANNEL_1_ID
+        value: "-1003181705395"
+      - key: PUBLIC_CHANNEL_1_USERNAME
+        value: "@EntertainmentTadka786"
+      - key: PUBLIC_CHANNEL_2_ID
+        value: "-1002831605258"
+      - key: PUBLIC_CHANNEL_2_USERNAME
+        value: "@threater_print_movies"
+      - key: PUBLIC_CHANNEL_3_ID
+        value: "-1002964109368"
+      - key: PUBLIC_CHANNEL_3_USERNAME
+        value: "@ETBackup"
+      # Private Channels
+      - key: PRIVATE_CHANNEL_1_ID
+        value: "-1003251791991"
+      - key: PRIVATE_CHANNEL_2_ID
+        value: "-1002337293281"
+      - key: PRIVATE_CHANNEL_3_ID
+        value: "-1003614546520"
+    healthCheckPath: /?health=1
+    autoDeploy: true
+    disk:
+      name: data
+      mountPath: /var/www/html/data
+      sizeGB: 1
