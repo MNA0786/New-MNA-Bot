@@ -3,41 +3,41 @@ services:
     name: entertainment-tadka-bot
     env: docker
     dockerfilePath: ./Dockerfile
-    dockerContext: .
-    region: singapore
-    plan: free
     envVars:
       - key: ENVIRONMENT
         value: production
       - key: BOT_TOKEN
         sync: false
-      - key: ADMIN_ID
-        value: 1080317415
       - key: BOT_USERNAME
         value: EntertainmentTadkaBot
-      # Public Channels
+      - key: ADMIN_ID
+        value: 1080317415
       - key: PUBLIC_CHANNEL_1_ID
-        value: "-1003181705395"
+        value: -1003181705395
       - key: PUBLIC_CHANNEL_1_USERNAME
-        value: "@EntertainmentTadka786"
+        value: '@EntertainmentTadka786'
       - key: PUBLIC_CHANNEL_2_ID
-        value: "-1002831605258"
+        value: -1002831605258
       - key: PUBLIC_CHANNEL_2_USERNAME
-        value: "@threater_print_movies"
+        value: '@threater_print_movies'
       - key: PUBLIC_CHANNEL_3_ID
-        value: "-1002964109368"
+        value: -1002964109368
       - key: PUBLIC_CHANNEL_3_USERNAME
-        value: "@ETBackup"
-      # Private Channels
+        value: '@ETBackup'
       - key: PRIVATE_CHANNEL_1_ID
-        value: "-1003251791991"
+        value: -1003251791991
       - key: PRIVATE_CHANNEL_2_ID
-        value: "-1002337293281"
+        value: -1002337293281
       - key: PRIVATE_CHANNEL_3_ID
-        value: "-1003614546520"
-    healthCheckPath: /?health=1
+        value: -1003614546520
+      - key: REQUEST_GROUP_ID
+        value: -1003083386043
+      - key: REQUEST_GROUP_USERNAME
+        value: '@EntertainmentTadka7860'
+      - key: API_ID
+        value: 21944581
+      - key: API_HASH
+        value: 7b1c174a5cd3466e25a976c39a791737
+    healthCheckPath: /?test=1
     autoDeploy: true
-    disk:
-      name: data
-      mountPath: /var/www/html/data
-      sizeGB: 1
+    plan: free
