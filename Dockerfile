@@ -6,42 +6,44 @@ WORKDIR /var/www/html
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
-    curl \
     git \
+    curl \
+    libpng-dev \
+    libonig-dev \
+    libxml2-dev \
+    zip \
     unzip \
-    libzip-dev \
-    && docker-php-ext-install zip \
+    && docker-php-ext-install mbstring \
+    && docker-php-ext-install gd \
     && docker-php-ext-install pdo_mysql \
-    && a2enmod rewrite \
-    && a2enmod headers
+    && docker-php-ext-install mysqli \
+    && docker-php-ext-install bcmath
 
-# Create directories FIRST before copying files
-RUN mkdir -p cache backups logs \
-    && chmod 777 cache backups logs \
-    && touch error.log \
-    && chmod 666 error.log
+# Enable Apache mod_rewrite
+RUN a2enmod rewrite
+RUN a2enmod headers
 
 # Copy application files
 COPY . .
 
-# Set permissions
-RUN chown -R www-data:www-data /var/www/html \
-    && chmod -R 755 /var/www/html \
-    && chmod 777 cache backups logs \
-    && chmod 666 error.log
+# Set proper permissions
+RUN chmod -R 755 /var/www/html
+RUN chown -R www-data:www-data /var/www/html
+RUN chmod 666 users.json movies.csv error.log
+RUN mkdir -p backups cache && chmod 777 backups cache
 
-# Create CSV and JSON files if they don't exist
-RUN if [ ! -f movies.csv ]; then echo "movie_name,message_id,channel_id" > movies.csv; fi \
-    && if [ ! -f users.json ]; then echo '{"users": {}, "total_requests": 0, "message_logs": []}' > users.json; fi \
-    && if [ ! -f bot_stats.json ]; then echo '{"total_movies": 0, "total_users": 0, "total_searches": 0, "last_updated": "'$(date -Iseconds)'"}' > bot_stats.json; fi \
-    && chmod 666 movies.csv users.json bot_stats.json
+# Create empty files if they don't exist
+RUN touch error.log movies.csv users.json bot_stats.json && \
+    chmod 666 error.log movies.csv users.json bot_stats.json
 
-# Expose port
+# Set PHP configuration
+RUN echo "upload_max_filesize = 100M" > /usr/local/etc/php/conf.d/uploads.ini && \
+    echo "post_max_size = 100M" >> /usr/local/etc/php/conf.d/uploads.ini && \
+    echo "memory_limit = 256M" >> /usr/local/etc/php/conf.d/uploads.ini && \
+    echo "max_execution_time = 300" >> /usr/local/etc/php/conf.d/uploads.ini
+
+# Expose port 80
 EXPOSE 80
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost/ || exit 1
 
 # Start Apache
 CMD ["apache2-foreground"]
