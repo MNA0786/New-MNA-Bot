@@ -134,6 +134,12 @@ define('CACHE_EXPIRY', $ENV_CONFIG['CACHE_EXPIRY']);
 define('ITEMS_PER_PAGE', $ENV_CONFIG['ITEMS_PER_PAGE']);
 define('CSV_BUFFER_SIZE', $ENV_CONFIG['CSV_BUFFER_SIZE']);
 
+// Channel constants for easy access
+define('MAIN_CHANNEL', '@EntertainmentTadka786');
+define('THEATER_CHANNEL', '@threater_print_movies');
+define('REQUEST_CHANNEL', '@EntertainmentTadka7860');
+define('BACKUP_CHANNEL_USERNAME', '@ETBackup');
+
 // ==================== CSV MANAGER CLASS ====================
 class CSVManager {
     private static $buffer = [];
@@ -469,6 +475,8 @@ function apiRequest($method, $params = array(), $is_multipart = false) {
         curl_setopt($ch, CURLOPT_POSTFIELDS, $params);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
         $res = curl_exec($ch);
         if ($res === false) {
             log_error("CURL ERROR: " . curl_error($ch), 'ERROR');
@@ -481,13 +489,19 @@ function apiRequest($method, $params = array(), $is_multipart = false) {
                 'method' => 'POST',
                 'content' => http_build_query($params),
                 'header' => "Content-Type: application/x-www-form-urlencoded\r\n",
-                'timeout' => 30
+                'timeout' => 30,
+                'ignore_errors' => true
+            ),
+            'ssl' => array(
+                'verify_peer' => false,
+                'verify_peer_name' => false
             )
         );
         $context = stream_context_create($options);
         $result = @file_get_contents($url, false, $context);
         if ($result === false) {
-            log_error("apiRequest failed for method $method", 'ERROR');
+            $error = error_get_last();
+            log_error("apiRequest failed for method $method: " . ($error['message'] ?? 'Unknown error'), 'ERROR');
         }
         return $result;
     }
@@ -511,6 +525,20 @@ function sendMessage($chat_id, $text, $reply_markup = null, $parse_mode = null) 
     log_error("Sending message to $chat_id", 'INFO', ['text_length' => strlen($text)]);
     
     return apiRequest('sendMessage', $data);
+}
+
+function editMessageText($chat_id, $message_id, $text, $reply_markup = null, $parse_mode = null) {
+    $data = [
+        'chat_id' => $chat_id,
+        'message_id' => $message_id,
+        'text' => $text
+    ];
+    if ($reply_markup) $data['reply_markup'] = json_encode($reply_markup);
+    if ($parse_mode) $data['parse_mode'] = $parse_mode;
+    
+    log_error("Editing message $message_id for $chat_id", 'INFO');
+    
+    return apiRequest('editMessageText', $data);
 }
 
 function copyMessage($chat_id, $from_chat_id, $message_id) {
@@ -1057,6 +1085,7 @@ if (isset($_GET['test_csv'])) {
     exit;
 }
 
+// ==================== TELEGRAM UPDATE PROCESSING ====================
 // Get the incoming update from Telegram
 $update = json_decode(file_get_contents('php://input'), true);
 
@@ -1151,19 +1180,81 @@ if ($update) {
             log_error("Command received", 'INFO', ['command' => $command]);
             
             if ($command == '/start') {
-                sendChatAction($chat_id, 'typing');
-                $welcome = "🎬 Welcome to Entertainment Tadka!\n\n";
-                $welcome .= "📢 How to use this bot:\n";
+                $welcome = "🎬 <b>Welcome to Entertainment Tadka!</b>\n\n";
+                
+                $welcome .= "📢 <b>How to use this bot:</b>\n";
                 $welcome .= "• Simply type any movie name\n";
                 $welcome .= "• Use English or Hindi\n";
+                $welcome .= "• Add 'theater' for theater prints\n";
                 $welcome .= "• Partial names also work\n\n";
-                $welcome .= "🔍 Examples:\n";
-                $welcome .= "• kgf\n• pushpa\n• avengers\n• spider-man\n\n";
-                $welcome .= "📢 Join: @EntertainmentTadka786\n";
-                $welcome .= "🎭 Theater Prints: @threater_print_movies\n";
-                $welcome .= "💾 Backup: @ETBackup";
-                sendMessage($chat_id, $welcome, null, 'HTML');
+                
+                $welcome .= "🔍 <b>Examples:</b>\n";
+                $welcome .= "• Mandala Murders 2025\n";
+                $welcome .= "• Lokah Chapter 1 Chandra 2025\n";
+                $welcome .= "• Idli Kadai (2025)\n";
+                $welcome .= "• IT - Welcome to Derry (2025) S01\n";
+                $welcome .= "• hindi movie\n";
+                $welcome .= "• kgf\n\n";
+                
+                $welcome .= "📢 <b>Our Channels:</b>\n";
+                $welcome .= "🍿 Main: @EntertainmentTadka786\n";
+                $welcome .= "🎭 Theater: @threater_print_movies\n";
+                $welcome .= "📥 Requests: @EntertainmentTadka7860\n";
+                $welcome .= "🔒 Backup: @ETBackup\n\n";
+                
+                $welcome .= "💡 <b>Tip:</b> Use /help for all commands";
+                
+                $keyboard = [
+                    'inline_keyboard' => [
+                        [
+                            ['text' => '🍿 Main Channel', 'url' => 'https://t.me/EntertainmentTadka786'],
+                            ['text' => '🎭 Theater Prints', 'url' => 'https://t.me/threater_print_movies']
+                        ],
+                        [
+                            ['text' => '📥 Request Movie', 'url' => 'https://t.me/EntertainmentTadka7860'],
+                            ['text' => '🔒 Backup Channel', 'url' => 'https://t.me/ETBackup']
+                        ],
+                        [
+                            ['text' => '❓ Help', 'callback_data' => 'help_command'],
+                            ['text' => '📊 Stats', 'callback_data' => 'show_stats']
+                        ]
+                    ]
+                ];
+                
+                sendMessage($chat_id, $welcome, $keyboard, 'HTML');
                 update_user_points($user_id, 'daily_login');
+            }
+            elseif ($command == '/help') {
+                sendChatAction($chat_id, 'typing');
+                $help = "🤖 <b>Entertainment Tadka Bot - Help</b>\n\n";
+                
+                $help .= "📋 <b>Available Commands:</b>\n";
+                $help .= "/start - Welcome message with channel links\n";
+                $help .= "/help - Show this help message\n";
+                $help .= "/checkdate - Show date-wise statistics\n";
+                $help .= "/totalupload - Browse all movies with pagination\n";
+                $help .= "/testcsv - View all movies in database\n";
+                $help .= "/checkcsv - Check CSV data (add 'all' for full list)\n";
+                $help .= "/csvstats - CSV statistics\n";
+                
+                if ($user_id == ADMIN_ID) {
+                    $help .= "/stats - Admin statistics (Admin only)\n";
+                }
+                
+                $help .= "\n🔍 <b>How to Search:</b>\n";
+                $help .= "• Type any movie name (English/Hindi)\n";
+                $help .= "• Partial names work too\n";
+                $help .= "• Example: 'kgf', 'pushpa', 'hindi movie'\n\n";
+                
+                $help .= "🎬 <b>Channel Information:</b>\n";
+                $help .= "🍿 Main: @EntertainmentTadka786\n";
+                $help .= "🎭 Theater: @threater_print_movies\n";
+                $help .= "📥 Requests: @EntertainmentTadka7860\n";
+                $help .= "🔒 Backup: @ETBackup\n\n";
+                
+                $help .= "⚠️ <b>Note:</b> This bot works with webhook. If you face issues, contact admin.";
+                
+                sendMessage($chat_id, $help, null, 'HTML');
             }
             elseif ($command == '/checkdate') {
                 sendChatAction($chat_id, 'typing');
@@ -1186,26 +1277,6 @@ if ($update) {
             }
             elseif ($command == '/stats' && $user_id == ADMIN_ID) {
                 admin_stats($chat_id);
-            }
-            elseif ($command == '/help') {
-                sendChatAction($chat_id, 'typing');
-                $help = "🤖 Entertainment Tadka Bot\n\n";
-                $help .= "📢 Join our channels:\n";
-                $help .= "• @EntertainmentTadka786\n";
-                $help .= "• @threater_print_movies\n";
-                $help .= "• @ETBackup\n\n";
-                $help .= "📋 Available Commands:\n";
-                $help .= "/start - Welcome message\n";
-                $help .= "/checkdate - Date-wise stats\n";
-                $help .= "/totalupload - Browse all movies\n";
-                $help .= "/testcsv - View all movies\n";
-                $help .= "/checkcsv - Check CSV data\n";
-                $help .= "/csvstats - CSV statistics\n";
-                $help .= "/help - This message\n";
-                if ($user_id == ADMIN_ID) {
-                    $help .= "/stats - Admin statistics\n";
-                }
-                sendMessage($chat_id, $help, null, 'HTML');
             }
         } 
         elseif (!empty(trim($text))) {
@@ -1306,6 +1377,123 @@ if ($update) {
         elseif ($data === 'tu_stop') {
             sendMessage($chat_id, "✅ Pagination stopped. Type /totalupload to start again.");
             answerCallbackQuery($query['id'], "Stopped");
+        }
+        elseif ($data === 'help_command') {
+            $help_text = "🤖 <b>Entertainment Tadka Bot - Help</b>\n\n";
+            
+            $help_text .= "📋 <b>Available Commands:</b>\n";
+            $help_text .= "/start - Welcome message with channel links\n";
+            $help_text .= "/help - Show this help message\n";
+            $help_text .= "/checkdate - Show date-wise statistics\n";
+            $help_text .= "/totalupload - Browse all movies with pagination\n";
+            $help_text .= "/testcsv - View all movies in database\n";
+            $help_text .= "/checkcsv - Check CSV data (add 'all' for full list)\n";
+            $help_text .= "/csvstats - CSV statistics\n";
+            
+            if ($user_id == ADMIN_ID) {
+                $help_text .= "/stats - Admin statistics (Admin only)\n";
+            }
+            
+            $help_text .= "\n🔍 <b>How to Search:</b>\n";
+            $help_text .= "• Type any movie name (English/Hindi)\n";
+            $help_text .= "• Partial names work too\n";
+            $help_text .= "• Example: 'kgf', 'pushpa', 'hindi movie'\n\n";
+            
+            $help_text .= "🎬 <b>Channel Information:</b>\n";
+            $help_text .= "🍿 Main: @EntertainmentTadka786\n";
+            $help_text .= "🎭 Theater: @threater_print_movies\n";
+            $help_text .= "📥 Requests: @EntertainmentTadka7860\n";
+            $help_text .= "🔒 Backup: @ETBackup\n\n";
+            
+            $help_text .= "⚠️ <b>Note:</b> This bot works with webhook. If you face issues, contact admin.";
+            
+            editMessageText($chat_id, $message['message_id'], $help_text, [
+                'inline_keyboard' => [
+                    [
+                        ['text' => '🔙 Back to Start', 'callback_data' => 'back_to_start']
+                    ]
+                ]
+            ], 'HTML');
+            
+            answerCallbackQuery($query['id'], "Help information loaded");
+        }
+        elseif ($data === 'back_to_start') {
+            $welcome = "🎬 <b>Welcome to Entertainment Tadka!</b>\n\n";
+            
+            $welcome .= "📢 <b>How to use this bot:</b>\n";
+            $welcome .= "• Simply type any movie name\n";
+            $welcome .= "• Use English or Hindi\n";
+            $welcome .= "• Add 'theater' for theater prints\n";
+            $welcome .= "• Partial names also work\n\n";
+            
+            $welcome .= "🔍 <b>Examples:</b>\n";
+            $welcome .= "• Mandala Murders 2025\n";
+            $welcome .= "• Lokah Chapter 1 Chandra 2025\n";
+            $welcome .= "• Idli Kadai (2025)\n";
+            $welcome .= "• IT - Welcome to Derry (2025) S01\n";
+            $welcome .= "• hindi movie\n";
+            $welcome .= "• kgf\n\n";
+            
+            $welcome .= "📢 <b>Our Channels:</b>\n";
+            $welcome .= "🍿 Main: @EntertainmentTadka786\n";
+            $welcome .= "🎭 Theater: @threater_print_movies\n";
+            $welcome .= "📥 Requests: @EntertainmentTadka7860\n";
+            $welcome .= "🔒 Backup: @ETBackup\n\n";
+            
+            $welcome .= "💡 <b>Tip:</b> Use /help for all commands";
+            
+            $keyboard = [
+                'inline_keyboard' => [
+                    [
+                        ['text' => '🍿 Main Channel', 'url' => 'https://t.me/EntertainmentTadka786'],
+                        ['text' => '🎭 Theater Prints', 'url' => 'https://t.me/threater_print_movies']
+                    ],
+                    [
+                        ['text' => '📥 Request Movie', 'url' => 'https://t.me/EntertainmentTadka7860'],
+                        ['text' => '🔒 Backup Channel', 'url' => 'https://t.me/ETBackup']
+                    ],
+                    [
+                        ['text' => '❓ Help', 'callback_data' => 'help_command'],
+                        ['text' => '📊 Stats', 'callback_data' => 'show_stats']
+                    ]
+                ]
+            ];
+            
+            editMessageText($chat_id, $message['message_id'], $welcome, $keyboard, 'HTML');
+            
+            answerCallbackQuery($query['id'], "Welcome back!");
+        }
+        elseif ($data === 'show_stats') {
+            $stats = $csvManager->getStats();
+            $users_data = json_decode(file_get_contents(USERS_FILE), true);
+            $total_users = count($users_data['users'] ?? []);
+            
+            $stats_text = "📊 <b>Bot Statistics</b>\n\n";
+            $stats_text .= "🎬 <b>Total Movies:</b> " . $stats['total_movies'] . "\n";
+            $stats_text .= "👥 <b>Total Users:</b> " . $total_users . "\n";
+            
+            $file_stats = json_decode(file_get_contents(STATS_FILE), true);
+            $stats_text .= "🔍 <b>Total Searches:</b> " . ($file_stats['total_searches'] ?? 0) . "\n";
+            $stats_text .= "🕒 <b>Last Updated:</b> " . $stats['last_updated'] . "\n\n";
+            
+            $stats_text .= "📡 <b>Movies by Channel:</b>\n";
+            foreach ($stats['channels'] as $channel_id => $count) {
+                $channel_name = getChannelUsername($channel_id);
+                $channel_type = getChannelType($channel_id);
+                $type_icon = $channel_type === 'public' ? '🌐' : '🔒';
+                $stats_text .= $type_icon . " " . $channel_name . ": " . $count . " movies\n";
+            }
+            
+            editMessageText($chat_id, $message['message_id'], $stats_text, [
+                'inline_keyboard' => [
+                    [
+                        ['text' => '🔙 Back to Start', 'callback_data' => 'back_to_start'],
+                        ['text' => '🔄 Refresh', 'callback_data' => 'show_stats']
+                    ]
+                ]
+            ], 'HTML');
+            
+            answerCallbackQuery($query['id'], "Statistics updated");
         }
     }
     
