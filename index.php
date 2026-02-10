@@ -1,5 +1,10 @@
 <?php
 // ==================== CONFIGURATION ====================
+// Start session for temporary storage
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 // Error Reporting - Only in Development
 $isDevelopment = (getenv('ENVIRONMENT') === 'development');
 if ($isDevelopment) {
@@ -106,13 +111,19 @@ $ENV_CONFIG = [
     'CSV_FILE' => 'movies.csv',
     'USERS_FILE' => 'users.json',
     'STATS_FILE' => 'bot_stats.json',
+    'REQUESTS_FILE' => 'requests.json',
     'BACKUP_DIR' => 'backups/',
     'CACHE_DIR' => 'cache/',
     
     // Settings
     'CACHE_EXPIRY' => 300, // 5 minutes
     'ITEMS_PER_PAGE' => 5,
-    'CSV_BUFFER_SIZE' => 50
+    'CSV_BUFFER_SIZE' => 50,
+    
+    // Request System Settings
+    'MAX_REQUESTS_PER_DAY' => 3,
+    'DUPLICATE_CHECK_HOURS' => 24,
+    'REQUEST_SYSTEM_ENABLED' => true
 ];
 
 // Validate required configuration
@@ -128,17 +139,484 @@ define('ADMIN_ID', $ENV_CONFIG['ADMIN_ID']);
 define('CSV_FILE', $ENV_CONFIG['CSV_FILE']);
 define('USERS_FILE', $ENV_CONFIG['USERS_FILE']);
 define('STATS_FILE', $ENV_CONFIG['STATS_FILE']);
+define('REQUESTS_FILE', $ENV_CONFIG['REQUESTS_FILE']);
 define('BACKUP_DIR', $ENV_CONFIG['BACKUP_DIR']);
 define('CACHE_DIR', $ENV_CONFIG['CACHE_DIR']);
 define('CACHE_EXPIRY', $ENV_CONFIG['CACHE_EXPIRY']);
 define('ITEMS_PER_PAGE', $ENV_CONFIG['ITEMS_PER_PAGE']);
 define('CSV_BUFFER_SIZE', $ENV_CONFIG['CSV_BUFFER_SIZE']);
+define('MAX_REQUESTS_PER_DAY', $ENV_CONFIG['MAX_REQUESTS_PER_DAY']);
+define('REQUEST_SYSTEM_ENABLED', $ENV_CONFIG['REQUEST_SYSTEM_ENABLED']);
 
 // Channel constants for easy access
 define('MAIN_CHANNEL', '@EntertainmentTadka786');
 define('THEATER_CHANNEL', '@threater_print_movies');
 define('REQUEST_CHANNEL', '@EntertainmentTadka7860');
 define('BACKUP_CHANNEL_USERNAME', '@ETBackup');
+
+// ==================== REQUEST SYSTEM CLASS ====================
+class RequestSystem {
+    private static $instance = null;
+    private $db_file = 'requests.json';
+    private $config;
+    
+    public static function getInstance() {
+        if (self::$instance === null) {
+            self::$instance = new self();
+        }
+        return self::$instance;
+    }
+    
+    private function __construct() {
+        $this->config = [
+            'max_requests_per_day' => MAX_REQUESTS_PER_DAY,
+            'duplicate_check_hours' => 24,
+            'auto_approve_delay' => 300,
+            'admin_ids' => [ADMIN_ID]
+        ];
+        $this->initializeDatabase();
+    }
+    
+    private function initializeDatabase() {
+        if (!file_exists($this->db_file)) {
+            $default_data = [
+                'requests' => [],
+                'last_request_id' => 0,
+                'user_stats' => [],
+                'system_stats' => [
+                    'total_requests' => 0,
+                    'approved' => 0,
+                    'rejected' => 0,
+                    'pending' => 0
+                ]
+            ];
+            file_put_contents($this->db_file, json_encode($default_data, JSON_PRETTY_PRINT));
+            @chmod($this->db_file, 0666);
+            log_error("Requests database created", 'INFO');
+        }
+    }
+    
+    private function loadData() {
+        $data = json_decode(file_get_contents($this->db_file), true);
+        if (!$data) {
+            $data = [
+                'requests' => [],
+                'last_request_id' => 0,
+                'user_stats' => [],
+                'system_stats' => [
+                    'total_requests' => 0,
+                    'approved' => 0,
+                    'rejected' => 0,
+                    'pending' => 0
+                ]
+            ];
+        }
+        return $data;
+    }
+    
+    private function saveData($data) {
+        $result = file_put_contents($this->db_file, json_encode($data, JSON_PRETTY_PRINT));
+        if ($result === false) {
+            log_error("Failed to save requests database", 'ERROR');
+            return false;
+        }
+        return true;
+    }
+    
+    // ==================== CORE FUNCTIONS ====================
+    public function submitRequest($user_id, $movie_name, $user_name = '') {
+        $movie_name = trim($movie_name);
+        
+        if (empty($movie_name) || strlen($movie_name) < 2) {
+            return ['success' => false, 'message' => 'Please enter a valid movie name (min 2 characters)'];
+        }
+        
+        // Check for duplicate request (same user + same movie within 24 hours)
+        $duplicate_check = $this->checkDuplicateRequest($user_id, $movie_name);
+        if ($duplicate_check['is_duplicate']) {
+            return [
+                'success' => false, 
+                'message' => "You already requested '$movie_name' recently. Please wait before requesting again."
+            ];
+        }
+        
+        // Flood control (max 3 requests per 24 hours)
+        $flood_check = $this->checkFloodControl($user_id);
+        if (!$flood_check['allowed']) {
+            return [
+                'success' => false,
+                'message' => "You've reached the daily limit of " . MAX_REQUESTS_PER_DAY . " requests. Please try again tomorrow."
+            ];
+        }
+        
+        // Create new request
+        $data = $this->loadData();
+        $request_id = ++$data['last_request_id'];
+        
+        $request = [
+            'id' => $request_id,
+            'user_id' => $user_id,
+            'user_name' => $user_name,
+            'movie_name' => $movie_name,
+            'status' => 'pending',
+            'created_at' => date('Y-m-d H:i:s'),
+            'updated_at' => date('Y-m-d H:i:s'),
+            'approved_at' => null,
+            'rejected_at' => null,
+            'approved_by' => null,
+            'rejected_by' => null,
+            'reason' => '',
+            'is_notified' => false
+        ];
+        
+        $data['requests'][$request_id] = $request;
+        $data['system_stats']['total_requests']++;
+        $data['system_stats']['pending']++;
+        
+        // Update user stats
+        if (!isset($data['user_stats'][$user_id])) {
+            $data['user_stats'][$user_id] = [
+                'total_requests' => 0,
+                'approved' => 0,
+                'rejected' => 0,
+                'pending' => 0,
+                'last_request_time' => null,
+                'requests_today' => 0,
+                'last_request_date' => date('Y-m-d')
+            ];
+        }
+        
+        $data['user_stats'][$user_id]['total_requests']++;
+        $data['user_stats'][$user_id]['pending']++;
+        $data['user_stats'][$user_id]['last_request_time'] = time();
+        
+        // Reset daily counter if new day
+        if ($data['user_stats'][$user_id]['last_request_date'] != date('Y-m-d')) {
+            $data['user_stats'][$user_id]['requests_today'] = 0;
+            $data['user_stats'][$user_id]['last_request_date'] = date('Y-m-d');
+        }
+        
+        $data['user_stats'][$user_id]['requests_today']++;
+        
+        $this->saveData($data);
+        
+        log_error("Request submitted", 'INFO', [
+            'request_id' => $request_id,
+            'user_id' => $user_id,
+            'movie_name' => $movie_name
+        ]);
+        
+        return [
+            'success' => true,
+            'request_id' => $request_id,
+            'message' => "✅ Request submitted successfully!\n\n🎬 Movie: $movie_name\n📝 ID: #$request_id\n🕒 Status: Pending\n\nYou will be notified when it's approved."
+        ];
+    }
+    
+    private function checkDuplicateRequest($user_id, $movie_name) {
+        $data = $this->loadData();
+        $movie_lower = strtolower($movie_name);
+        $time_limit = time() - (24 * 3600); // 24 hours
+        
+        foreach ($data['requests'] as $request) {
+            if ($request['user_id'] == $user_id && 
+                strtolower($request['movie_name']) == $movie_lower &&
+                strtotime($request['created_at']) > $time_limit) {
+                return [
+                    'is_duplicate' => true,
+                    'request' => $request
+                ];
+            }
+        }
+        
+        return ['is_duplicate' => false];
+    }
+    
+    private function checkFloodControl($user_id) {
+        $data = $this->loadData();
+        
+        if (!isset($data['user_stats'][$user_id])) {
+            return ['allowed' => true, 'remaining' => MAX_REQUESTS_PER_DAY];
+        }
+        
+        $user_stats = $data['user_stats'][$user_id];
+        
+        // Reset if new day
+        if ($user_stats['last_request_date'] != date('Y-m-d')) {
+            return ['allowed' => true, 'remaining' => MAX_REQUESTS_PER_DAY];
+        }
+        
+        $remaining = MAX_REQUESTS_PER_DAY - $user_stats['requests_today'];
+        
+        return [
+            'allowed' => $user_stats['requests_today'] < MAX_REQUESTS_PER_DAY,
+            'remaining' => max(0, $remaining)
+        ];
+    }
+    
+    // ==================== MODERATION FUNCTIONS ====================
+    public function approveRequest($request_id, $admin_id) {
+        $data = $this->loadData();
+        
+        if (!isset($data['requests'][$request_id])) {
+            return ['success' => false, 'message' => 'Request not found'];
+        }
+        
+        $request = $data['requests'][$request_id];
+        
+        if ($request['status'] != 'pending') {
+            return ['success' => false, 'message' => "Request is already {$request['status']}"];
+        }
+        
+        // Update request
+        $data['requests'][$request_id]['status'] = 'approved';
+        $data['requests'][$request_id]['approved_at'] = date('Y-m-d H:i:s');
+        $data['requests'][$request_id]['approved_by'] = $admin_id;
+        $data['requests'][$request_id]['updated_at'] = date('Y-m-d H:i:s');
+        
+        // Update stats
+        $data['system_stats']['approved']++;
+        $data['system_stats']['pending']--;
+        
+        // Update user stats
+        $user_id = $request['user_id'];
+        $data['user_stats'][$user_id]['approved']++;
+        $data['user_stats'][$user_id]['pending']--;
+        
+        $this->saveData($data);
+        
+        log_error("Request approved", 'INFO', [
+            'request_id' => $request_id,
+            'admin_id' => $admin_id,
+            'movie_name' => $request['movie_name']
+        ]);
+        
+        return [
+            'success' => true,
+            'request' => $data['requests'][$request_id],
+            'message' => "✅ Request #$request_id approved!"
+        ];
+    }
+    
+    public function rejectRequest($request_id, $admin_id, $reason = '') {
+        $data = $this->loadData();
+        
+        if (!isset($data['requests'][$request_id])) {
+            return ['success' => false, 'message' => 'Request not found'];
+        }
+        
+        $request = $data['requests'][$request_id];
+        
+        if ($request['status'] != 'pending') {
+            return ['success' => false, 'message' => "Request is already {$request['status']}"];
+        }
+        
+        // Update request
+        $data['requests'][$request_id]['status'] = 'rejected';
+        $data['requests'][$request_id]['rejected_at'] = date('Y-m-d H:i:s');
+        $data['requests'][$request_id]['rejected_by'] = $admin_id;
+        $data['requests'][$request_id]['updated_at'] = date('Y-m-d H:i:s');
+        $data['requests'][$request_id]['reason'] = $reason;
+        
+        // Update stats
+        $data['system_stats']['rejected']++;
+        $data['system_stats']['pending']--;
+        
+        // Update user stats
+        $user_id = $request['user_id'];
+        $data['user_stats'][$user_id]['rejected']++;
+        $data['user_stats'][$user_id]['pending']--;
+        
+        $this->saveData($data);
+        
+        log_error("Request rejected", 'INFO', [
+            'request_id' => $request_id,
+            'admin_id' => $admin_id,
+            'movie_name' => $request['movie_name'],
+            'reason' => $reason
+        ]);
+        
+        return [
+            'success' => true,
+            'request' => $data['requests'][$request_id],
+            'message' => "❌ Request #$request_id rejected!"
+        ];
+    }
+    
+    public function bulkApprove($request_ids, $admin_id) {
+        $results = [];
+        $success_count = 0;
+        
+        foreach ($request_ids as $request_id) {
+            $result = $this->approveRequest($request_id, $admin_id);
+            if ($result['success']) {
+                $success_count++;
+            }
+            $results[$request_id] = $result;
+        }
+        
+        return [
+            'success' => true,
+            'approved_count' => $success_count,
+            'total_count' => count($request_ids),
+            'results' => $results
+        ];
+    }
+    
+    public function bulkReject($request_ids, $admin_id, $reason = '') {
+        $results = [];
+        $success_count = 0;
+        
+        foreach ($request_ids as $request_id) {
+            $result = $this->rejectRequest($request_id, $admin_id, $reason);
+            if ($result['success']) {
+                $success_count++;
+            }
+            $results[$request_id] = $result;
+        }
+        
+        return [
+            'success' => true,
+            'rejected_count' => $success_count,
+            'total_count' => count($request_ids),
+            'results' => $results
+        ];
+    }
+    
+    // ==================== QUERY FUNCTIONS ====================
+    public function getPendingRequests($limit = 10, $filter_movie = '') {
+        $data = $this->loadData();
+        $pending = [];
+        
+        foreach ($data['requests'] as $request) {
+            if ($request['status'] == 'pending') {
+                if (!empty($filter_movie)) {
+                    $movie_lower = strtolower($filter_movie);
+                    $request_movie_lower = strtolower($request['movie_name']);
+                    if (strpos($request_movie_lower, $movie_lower) === false) {
+                        continue;
+                    }
+                }
+                $pending[] = $request;
+            }
+        }
+        
+        // Sort by creation date (oldest first)
+        usort($pending, function($a, $b) {
+            return strtotime($a['created_at']) - strtotime($b['created_at']);
+        });
+        
+        return array_slice($pending, 0, $limit);
+    }
+    
+    public function getUserRequests($user_id, $limit = 20) {
+        $data = $this->loadData();
+        $user_requests = [];
+        
+        foreach ($data['requests'] as $request) {
+            if ($request['user_id'] == $user_id) {
+                $user_requests[] = $request;
+            }
+        }
+        
+        // Sort by creation date (newest first)
+        usort($user_requests, function($a, $b) {
+            return strtotime($b['created_at']) - strtotime($a['created_at']);
+        });
+        
+        return array_slice($user_requests, 0, $limit);
+    }
+    
+    public function getRequest($request_id) {
+        $data = $this->loadData();
+        return $data['requests'][$request_id] ?? null;
+    }
+    
+    public function getStats() {
+        $data = $this->loadData();
+        return $data['system_stats'];
+    }
+    
+    public function getUserStats($user_id) {
+        $data = $this->loadData();
+        return $data['user_stats'][$user_id] ?? [
+            'total_requests' => 0,
+            'approved' => 0,
+            'rejected' => 0,
+            'pending' => 0,
+            'requests_today' => 0
+        ];
+    }
+    
+    // ==================== AUTO-APPROVE HOOK ====================
+    public function checkAutoApprove($movie_name) {
+        $data = $this->loadData();
+        $movie_lower = strtolower($movie_name);
+        $auto_approved = [];
+        
+        foreach ($data['requests'] as $request_id => $request) {
+            if ($request['status'] == 'pending') {
+                $request_movie_lower = strtolower($request['movie_name']);
+                
+                // Simple matching logic
+                if (strpos($movie_lower, $request_movie_lower) !== false || 
+                    strpos($request_movie_lower, $movie_lower) !== false ||
+                    similar_text($movie_lower, $request_movie_lower) > 80) {
+                    
+                    // Auto-approve
+                    $data['requests'][$request_id]['status'] = 'approved';
+                    $data['requests'][$request_id]['approved_at'] = date('Y-m-d H:i:s');
+                    $data['requests'][$request_id]['approved_by'] = 'system';
+                    $data['requests'][$request_id]['updated_at'] = date('Y-m-d H:i:s');
+                    $data['requests'][$request_id]['reason'] = 'Auto-approved: Movie added to database';
+                    
+                    // Update stats
+                    $data['system_stats']['approved']++;
+                    $data['system_stats']['pending']--;
+                    
+                    // Update user stats
+                    $user_id = $request['user_id'];
+                    $data['user_stats'][$user_id]['approved']++;
+                    $data['user_stats'][$user_id]['pending']--;
+                    
+                    $auto_approved[] = $request_id;
+                }
+            }
+        }
+        
+        if (!empty($auto_approved)) {
+            $this->saveData($data);
+            log_error("Auto-approved requests", 'INFO', [
+                'movie_name' => $movie_name,
+                'request_ids' => $auto_approved
+            ]);
+        }
+        
+        return $auto_approved;
+    }
+    
+    // ==================== NOTIFICATION SYSTEM ====================
+    public function markAsNotified($request_id) {
+        $data = $this->loadData();
+        if (isset($data['requests'][$request_id])) {
+            $data['requests'][$request_id]['is_notified'] = true;
+            $this->saveData($data);
+        }
+    }
+    
+    public function getUnnotifiedRequests() {
+        $data = $this->loadData();
+        $unnotified = [];
+        
+        foreach ($data['requests'] as $request) {
+            if ($request['status'] != 'pending' && !$request['is_notified']) {
+                $unnotified[] = $request;
+            }
+        }
+        
+        return $unnotified;
+    }
+}
 
 // ==================== CSV MANAGER CLASS ====================
 class CSVManager {
@@ -607,6 +1085,43 @@ function getChannelUsername($channel_id) {
     return 'Unknown Channel';
 }
 
+// ==================== REQUEST NOTIFICATION FUNCTIONS ====================
+function notifyUserAboutRequest($user_id, $request, $action) {
+    global $requestSystem;
+    
+    $movie_name = htmlspecialchars($request['movie_name']);
+    
+    if ($action == 'approved') {
+        $message = "🎉 <b>Good News!</b>\n\n";
+        $message .= "✅ Your movie request has been <b>APPROVED</b>!\n\n";
+        $message .= "🎬 <b>Movie:</b> $movie_name\n";
+        $message .= "📝 <b>Request ID:</b> #" . $request['id'] . "\n";
+        $message .= "🕒 <b>Approved at:</b> " . date('d M Y, H:i', strtotime($request['approved_at'])) . "\n\n";
+        
+        if (!empty($request['reason'])) {
+            $message .= "📋 <b>Note:</b> " . $request['reason'] . "\n\n";
+        }
+        
+        $message .= "🔍 You can now search for this movie in the bot!\n";
+        $message .= "📢 Join: @EntertainmentTadka786";
+    } else {
+        $message = "📭 <b>Update on Your Request</b>\n\n";
+        $message .= "❌ Your movie request has been <b>REJECTED</b>.\n\n";
+        $message .= "🎬 <b>Movie:</b> $movie_name\n";
+        $message .= "📝 <b>Request ID:</b> #" . $request['id'] . "\n";
+        $message .= "🕒 <b>Rejected at:</b> " . date('d M Y, H:i', strtotime($request['rejected_at'])) . "\n";
+        
+        if (!empty($request['reason'])) {
+            $message .= "📋 <b>Reason:</b> " . $request['reason'] . "\n";
+        }
+        
+        $message .= "\n💡 <b>Tip:</b> Make sure the movie name is correct and check if it's already available.";
+    }
+    
+    sendMessage($user_id, $message, null, 'HTML');
+    $requestSystem->markAsNotified($request['id']);
+}
+
 // ==================== DELIVERY LOGIC ====================
 function deliver_item_to_chat($chat_id, $item) {
     $channel_id = $item['channel_id'];
@@ -821,13 +1336,14 @@ function update_user_points($user_id, $action) {
 
 // ==================== ADMIN COMMANDS ====================
 function admin_stats($chat_id) {
-    global $csvManager, $ENV_CONFIG;
+    global $csvManager, $ENV_CONFIG, $requestSystem;
     
     sendChatAction($chat_id, 'typing');
     
     $stats = $csvManager->getStats();
     $users_data = json_decode(file_get_contents(USERS_FILE), true);
     $total_users = count($users_data['users'] ?? []);
+    $request_stats = $requestSystem->getStats();
     
     $msg = "📊 Bot Statistics\n\n";
     $msg .= "🎬 Total Movies: " . $stats['total_movies'] . "\n";
@@ -843,6 +1359,12 @@ function admin_stats($chat_id) {
         $channel_name = getChannelUsername($channel_id);
         $msg .= "• " . $channel_name . ": " . $count . " movies\n";
     }
+    
+    $msg .= "\n📋 Request System Stats:\n";
+    $msg .= "• Total Requests: " . $request_stats['total_requests'] . "\n";
+    $msg .= "• Pending: " . $request_stats['pending'] . "\n";
+    $msg .= "• Approved: " . $request_stats['approved'] . "\n";
+    $msg .= "• Rejected: " . $request_stats['rejected'] . "\n";
     
     sendMessage($chat_id, $msg, null, 'HTML');
     log_error("Admin stats sent to $chat_id", 'INFO');
@@ -1009,8 +1531,9 @@ function show_csv_data($chat_id, $show_all = false) {
 }
 
 // ==================== MAIN PROCESSING ====================
-// Initialize CSV Manager
+// Initialize Managers
 $csvManager = CSVManager::getInstance();
+$requestSystem = RequestSystem::getInstance();
 
 // Check for webhook setup
 if (isset($_GET['setup'])) {
@@ -1056,6 +1579,10 @@ if (isset($_GET['test'])) {
     
     $users_data = json_decode(@file_get_contents(USERS_FILE), true);
     echo "<p><strong>Total Users:</strong> " . count($users_data['users'] ?? []) . "</p>";
+    
+    $request_stats = $requestSystem->getStats();
+    echo "<p><strong>Total Requests:</strong> " . $request_stats['total_requests'] . "</p>";
+    echo "<p><strong>Pending Requests:</strong> " . $request_stats['pending'] . "</p>";
     
     echo "<h3>🚀 Quick Setup</h3>";
     echo "<p><a href='?setup=1'>Set Webhook Now</a></p>";
@@ -1124,6 +1651,18 @@ if ($update) {
             
             if (!empty(trim($text))) {
                 $csvManager->bufferedAppend($text, $message_id, $chat_id);
+                
+                // Auto-approve matching requests
+                $auto_approved = $requestSystem->checkAutoApprove($text);
+                if (!empty($auto_approved)) {
+                    foreach ($auto_approved as $req_id) {
+                        $request = $requestSystem->getRequest($req_id);
+                        if ($request) {
+                            notifyUserAboutRequest($request['user_id'], $request, 'approved');
+                        }
+                    }
+                }
+                
                 log_error("Added channel post to CSV", 'INFO', [
                     'movie_name' => $text,
                     'channel_id' => $chat_id
@@ -1172,6 +1711,34 @@ if ($update) {
         $users_data['users'][$user_id]['last_active'] = date('Y-m-d H:i:s');
         file_put_contents(USERS_FILE, json_encode($users_data, JSON_PRETTY_PRINT));
         
+        // Check if admin is providing custom rejection reason
+        if (isset($_SESSION['pending_rejection']) && $_SESSION['pending_rejection']['admin_id'] == $user_id) {
+            $pending = $_SESSION['pending_rejection'];
+            $request_id = $pending['request_id'];
+            $reason = $text;
+            
+            $result = $requestSystem->rejectRequest($request_id, $user_id, $reason);
+            
+            if ($result['success']) {
+                $request = $result['request'];
+                
+                // Update original message
+                $update_text = "❌ <b>Rejected by Admin</b>\n📝 Reason: $reason\n🕒 " . date('H:i:s');
+                editMessageText($pending['chat_id'], $pending['message_id'], 
+                    $message['text'] . "\n\n" . $update_text, null, 'HTML');
+                
+                sendMessage($chat_id, "✅ Request #$request_id rejected with custom reason.");
+                
+                // Notify user
+                notifyUserAboutRequest($request['user_id'], $request, 'rejected');
+            } else {
+                sendMessage($chat_id, "❌ Failed: " . $result['message']);
+            }
+            
+            unset($_SESSION['pending_rejection']);
+            exit;
+        }
+        
         // Process commands
         if (strpos($text, '/') === 0) {
             $parts = explode(' ', $text);
@@ -1202,6 +1769,12 @@ if ($update) {
                 $welcome .= "📥 Requests: @EntertainmentTadka7860\n";
                 $welcome .= "🔒 Backup: @ETBackup\n\n";
                 
+                $welcome .= "🎬 <b>Movie Request System:</b>\n";
+                $welcome .= "• Use /request MovieName to request a movie\n";
+                $welcome .= "• Or type: 'pls add MovieName'\n";
+                $welcome .= "• Check status with /myrequests\n";
+                $welcome .= "• Max 3 requests per day\n\n";
+                
                 $welcome .= "💡 <b>Tip:</b> Use /help for all commands";
                 
                 $keyboard = [
@@ -1231,6 +1804,8 @@ if ($update) {
                 $help .= "📋 <b>Available Commands:</b>\n";
                 $help .= "/start - Welcome message with channel links\n";
                 $help .= "/help - Show this help message\n";
+                $help .= "/request MovieName - Request a new movie\n";
+                $help .= "/myrequests - View your movie requests\n";
                 $help .= "/checkdate - Show date-wise statistics\n";
                 $help .= "/totalupload - Browse all movies with pagination\n";
                 $help .= "/testcsv - View all movies in database\n";
@@ -1238,7 +1813,8 @@ if ($update) {
                 $help .= "/csvstats - CSV statistics\n";
                 
                 if ($user_id == ADMIN_ID) {
-                    $help .= "/stats - Admin statistics (Admin only)\n";
+                    $help .= "/stats - Admin statistics\n";
+                    $help .= "/pendingrequests - View pending requests (Admin only)\n";
                 }
                 
                 $help .= "\n🔍 <b>How to Search:</b>\n";
@@ -1246,7 +1822,13 @@ if ($update) {
                 $help .= "• Partial names work too\n";
                 $help .= "• Example: 'kgf', 'pushpa', 'hindi movie'\n\n";
                 
-                $help .= "🎬 <b>Channel Information:</b>\n";
+                $help .= "🎬 <b>Movie Requests:</b>\n";
+                $help .= "• Use /request MovieName\n";
+                $help .= "• Or type: 'pls add MovieName'\n";
+                $help .= "• Max 3 requests per day per user\n";
+                $help .= "• Check status with /myrequests\n\n";
+                
+                $help .= "📢 <b>Channel Information:</b>\n";
                 $help .= "🍿 Main: @EntertainmentTadka786\n";
                 $help .= "🎭 Theater: @threater_print_movies\n";
                 $help .= "📥 Requests: @EntertainmentTadka7860\n";
@@ -1255,6 +1837,148 @@ if ($update) {
                 $help .= "⚠️ <b>Note:</b> This bot works with webhook. If you face issues, contact admin.";
                 
                 sendMessage($chat_id, $help, null, 'HTML');
+            }
+            elseif ($command == '/request') {
+                if (!REQUEST_SYSTEM_ENABLED) {
+                    sendMessage($chat_id, "❌ Request system is currently disabled.");
+                    break;
+                }
+                
+                if (!isset($parts[1])) {
+                    sendMessage($chat_id, "📝 Usage: /request Movie Name\nExample: /request KGF Chapter 3\n\nYou can also type: 'pls add MovieName'");
+                    break;
+                }
+                
+                $movie_name = implode(' ', array_slice($parts, 1));
+                $user_name = $message['from']['first_name'] . ($message['from']['last_name'] ? ' ' . $message['from']['last_name'] : '');
+                
+                $result = $requestSystem->submitRequest($user_id, $movie_name, $user_name);
+                sendMessage($chat_id, $result['message']);
+            }
+            elseif ($command == '/myrequests') {
+                if (!REQUEST_SYSTEM_ENABLED) {
+                    sendMessage($chat_id, "❌ Request system is currently disabled.");
+                    break;
+                }
+                
+                $requests = $requestSystem->getUserRequests($user_id, 10);
+                $user_stats = $requestSystem->getUserStats($user_id);
+                
+                if (empty($requests)) {
+                    sendMessage($chat_id, "📭 You haven't made any requests yet.\nUse /request MovieName to request a movie.\n\nOr type: 'pls add MovieName'");
+                    break;
+                }
+                
+                $message = "📋 <b>Your Movie Requests</b>\n\n";
+                $message .= "📊 <b>Stats:</b>\n";
+                $message .= "• Total: " . $user_stats['total_requests'] . "\n";
+                $message .= "• Approved: " . $user_stats['approved'] . "\n";
+                $message .= "• Pending: " . $user_stats['pending'] . "\n";
+                $message .= "• Rejected: " . $user_stats['rejected'] . "\n";
+                $message .= "• Today: " . $user_stats['requests_today'] . "/" . MAX_REQUESTS_PER_DAY . "\n\n";
+                
+                $message .= "🎬 <b>Recent Requests:</b>\n";
+                $i = 1;
+                foreach ($requests as $req) {
+                    $status_icon = $req['status'] == 'approved' ? '✅' : ($req['status'] == 'rejected' ? '❌' : '⏳');
+                    $message .= "$i. $status_icon <b>" . htmlspecialchars($req['movie_name']) . "</b>\n";
+                    $message .= "   ID: #" . $req['id'] . " | " . ucfirst($req['status']) . "\n";
+                    $message .= "   Date: " . date('d M, H:i', strtotime($req['created_at'])) . "\n\n";
+                    $i++;
+                }
+                
+                sendMessage($chat_id, $message, null, 'HTML');
+            }
+            elseif ($command == '/pendingrequests' && $user_id == ADMIN_ID) {
+                if (!REQUEST_SYSTEM_ENABLED) {
+                    sendMessage($chat_id, "❌ Request system is currently disabled.");
+                    break;
+                }
+                
+                $limit = 10;
+                $filter_movie = '';
+                
+                if (isset($parts[1])) {
+                    if (is_numeric($parts[1])) {
+                        $limit = min(intval($parts[1]), 50);
+                    } else {
+                        $filter_movie = implode(' ', array_slice($parts, 1));
+                    }
+                }
+                
+                $requests = $requestSystem->getPendingRequests($limit, $filter_movie);
+                $stats = $requestSystem->getStats();
+                
+                if (empty($requests)) {
+                    $msg = "📭 No pending requests";
+                    if ($filter_movie) {
+                        $msg .= " for '$filter_movie'";
+                    }
+                    sendMessage($chat_id, $msg . ".");
+                    break;
+                }
+                
+                $message = "📋 <b>Pending Requests";
+                if ($filter_movie) {
+                    $message .= " (Filter: $filter_movie)";
+                }
+                $message .= "</b>\n\n";
+                
+                $message .= "📊 <b>System Stats:</b>\n";
+                $message .= "• Total: " . $stats['total_requests'] . "\n";
+                $message .= "• Pending: " . $stats['pending'] . "\n";
+                $message .= "• Approved: " . $stats['approved'] . "\n";
+                $message .= "• Rejected: " . $stats['rejected'] . "\n\n";
+                
+                $message .= "🎬 <b>Showing " . count($requests) . " requests:</b>\n\n";
+                
+                $keyboard = ['inline_keyboard' => []];
+                
+                foreach ($requests as $req) {
+                    $message .= "🔸 <b>#" . $req['id'] . ":</b> " . htmlspecialchars($req['movie_name']) . "\n";
+                    $message .= "   👤 User: " . ($req['user_name'] ?: "ID: " . $req['user_id']) . "\n";
+                    $message .= "   📅 Date: " . date('d M H:i', strtotime($req['created_at'])) . "\n\n";
+                    
+                    // Add approve/reject buttons for each request
+                    $keyboard['inline_keyboard'][] = [
+                        [
+                            'text' => '✅ Approve #' . $req['id'],
+                            'callback_data' => 'approve_' . $req['id']
+                        ],
+                        [
+                            'text' => '❌ Reject #' . $req['id'],
+                            'callback_data' => 'reject_' . $req['id']
+                        ]
+                    ];
+                }
+                
+                // Add bulk action buttons
+                $request_ids = array_column($requests, 'id');
+                $current_page_data = base64_encode(json_encode($request_ids));
+                
+                $keyboard['inline_keyboard'][] = [
+                    [
+                        'text' => '✅ Bulk Approve This Page',
+                        'callback_data' => 'bulk_approve_' . $current_page_data
+                    ],
+                    [
+                        'text' => '❌ Bulk Reject This Page',
+                        'callback_data' => 'bulk_reject_' . $current_page_data
+                    ]
+                ];
+                
+                // Add navigation if more than limit
+                if (count($requests) >= $limit) {
+                    $next_limit = $limit + 10;
+                    $keyboard['inline_keyboard'][] = [
+                        [
+                            'text' => '⏭️ Load More',
+                            'callback_data' => 'pending_more_' . $next_limit
+                        ]
+                    ];
+                }
+                
+                sendMessage($chat_id, $message, $keyboard, 'HTML');
             }
             elseif ($command == '/checkdate') {
                 sendChatAction($chat_id, 'typing');
@@ -1279,6 +2003,55 @@ if ($update) {
                 admin_stats($chat_id);
             }
         } 
+        // Normal text request detection (pls add movie)
+        elseif (!empty(trim($text)) && (
+            stripos($text, 'add movie') !== false || 
+            stripos($text, 'please add') !== false || 
+            stripos($text, 'pls add') !== false ||
+            stripos($text, 'can you add') !== false ||
+            stripos($text, 'request movie') !== false
+        )) {
+            
+            if (!REQUEST_SYSTEM_ENABLED) {
+                sendMessage($chat_id, "❌ Request system is currently disabled.");
+                break;
+            }
+            
+            // Extract movie name from text
+            $patterns = [
+                '/add movie (.+)/i',
+                '/please add (.+)/i',
+                '/pls add (.+)/i',
+                '/add (.+) movie/i',
+                '/can you add (.+)/i',
+                '/request movie (.+)/i',
+                '/request (.+) movie/i'
+            ];
+            
+            $movie_name = '';
+            foreach ($patterns as $pattern) {
+                if (preg_match($pattern, $text, $matches)) {
+                    $movie_name = trim($matches[1]);
+                    break;
+                }
+            }
+            
+            // If no pattern matched, use the whole text (excluding request words)
+            if (empty($movie_name)) {
+                $clean_text = preg_replace('/add movie|please add|pls add|movie|add|request|can you/i', '', $text);
+                $movie_name = trim($clean_text);
+            }
+            
+            if (strlen($movie_name) < 2) {
+                sendMessage($chat_id, "🎬 Please specify which movie you want to add.\nExample: 'Please add KGF Chapter 3' or use /request command");
+                break;
+            }
+            
+            $user_name = $message['from']['first_name'] . ($message['from']['last_name'] ? ' ' . $message['from']['last_name'] : '');
+            $result = $requestSystem->submitRequest($user_id, $movie_name, $user_name);
+            sendMessage($chat_id, $result['message']);
+        }
+        // Normal movie search
         elseif (!empty(trim($text))) {
             advanced_search($chat_id, $text, $user_id);
         }
@@ -1384,6 +2157,8 @@ if ($update) {
             $help_text .= "📋 <b>Available Commands:</b>\n";
             $help_text .= "/start - Welcome message with channel links\n";
             $help_text .= "/help - Show this help message\n";
+            $help_text .= "/request MovieName - Request a new movie\n";
+            $help_text .= "/myrequests - View your movie requests\n";
             $help_text .= "/checkdate - Show date-wise statistics\n";
             $help_text .= "/totalupload - Browse all movies with pagination\n";
             $help_text .= "/testcsv - View all movies in database\n";
@@ -1391,7 +2166,8 @@ if ($update) {
             $help_text .= "/csvstats - CSV statistics\n";
             
             if ($user_id == ADMIN_ID) {
-                $help_text .= "/stats - Admin statistics (Admin only)\n";
+                $help_text .= "/stats - Admin statistics\n";
+                $help_text .= "/pendingrequests - View pending requests (Admin only)\n";
             }
             
             $help_text .= "\n🔍 <b>How to Search:</b>\n";
@@ -1399,7 +2175,13 @@ if ($update) {
             $help_text .= "• Partial names work too\n";
             $help_text .= "• Example: 'kgf', 'pushpa', 'hindi movie'\n\n";
             
-            $help_text .= "🎬 <b>Channel Information:</b>\n";
+            $help_text .= "🎬 <b>Movie Requests:</b>\n";
+            $help_text .= "• Use /request MovieName\n";
+            $help_text .= "• Or type: 'pls add MovieName'\n";
+            $help_text .= "• Max 3 requests per day per user\n";
+            $help_text .= "• Check status with /myrequests\n\n";
+            
+            $help_text .= "📢 <b>Channel Information:</b>\n";
             $help_text .= "🍿 Main: @EntertainmentTadka786\n";
             $help_text .= "🎭 Theater: @threater_print_movies\n";
             $help_text .= "📥 Requests: @EntertainmentTadka7860\n";
@@ -1439,6 +2221,12 @@ if ($update) {
             $welcome .= "🎭 Theater: @threater_print_movies\n";
             $welcome .= "📥 Requests: @EntertainmentTadka7860\n";
             $welcome .= "🔒 Backup: @ETBackup\n\n";
+            
+            $welcome .= "🎬 <b>Movie Request System:</b>\n";
+            $welcome .= "• Use /request MovieName to request a movie\n";
+            $welcome .= "• Or type: 'pls add MovieName'\n";
+            $welcome .= "• Check status with /myrequests\n";
+            $welcome .= "• Max 3 requests per day\n\n";
             
             $welcome .= "💡 <b>Tip:</b> Use /help for all commands";
             
@@ -1494,6 +2282,217 @@ if ($update) {
             ], 'HTML');
             
             answerCallbackQuery($query['id'], "Statistics updated");
+        }
+        elseif (strpos($data, 'approve_') === 0) {
+            if ($user_id != ADMIN_ID) {
+                answerCallbackQuery($query['id'], "❌ Admin only!", true);
+                break;
+            }
+            
+            $request_id = str_replace('approve_', '', $data);
+            $result = $requestSystem->approveRequest($request_id, $user_id);
+            
+            if ($result['success']) {
+                // Update message with new status
+                $request = $result['request'];
+                $new_text = $message['text'] . "\n\n✅ <b>Approved by Admin</b>\n🕒 " . date('H:i:s');
+                
+                editMessageText($chat_id, $message['message_id'], $new_text, null, 'HTML');
+                answerCallbackQuery($query['id'], "✅ Request #$request_id approved");
+                
+                // Notify user
+                notifyUserAboutRequest($request['user_id'], $request, 'approved');
+            } else {
+                answerCallbackQuery($query['id'], $result['message'], true);
+            }
+        }
+        elseif (strpos($data, 'reject_') === 0) {
+            if ($user_id != ADMIN_ID) {
+                answerCallbackQuery($query['id'], "❌ Admin only!", true);
+                break;
+            }
+            
+            $request_id = str_replace('reject_', '', $data);
+            
+            // Ask for reason via inline keyboard
+            $keyboard = [
+                'inline_keyboard' => [
+                    [
+                        ['text' => 'Already Available', 'callback_data' => 'reject_reason_' . $request_id . '_already_available'],
+                        ['text' => 'Invalid Request', 'callback_data' => 'reject_reason_' . $request_id . '_invalid_request']
+                    ],
+                    [
+                        ['text' => 'Low Quality', 'callback_data' => 'reject_reason_' . $request_id . '_low_quality'],
+                        ['text' => 'Not Available', 'callback_data' => 'reject_reason_' . $request_id . '_not_available']
+                    ],
+                    [
+                        ['text' => 'Custom Reason...', 'callback_data' => 'reject_custom_' . $request_id]
+                    ]
+                ]
+            ];
+            
+            editMessageText($chat_id, $message['message_id'], 
+                "Select rejection reason for Request #$request_id:", $keyboard);
+            
+            answerCallbackQuery($query['id'], "Select rejection reason");
+        }
+        elseif (strpos($data, 'reject_reason_') === 0) {
+            if ($user_id != ADMIN_ID) {
+                answerCallbackQuery($query['id'], "❌ Admin only!", true);
+                break;
+            }
+            
+            $parts = explode('_', $data);
+            $request_id = $parts[2];
+            $reason_key = $parts[3];
+            
+            $reason_map = [
+                'already_available' => 'Movie is already available in our channels',
+                'invalid_request' => 'Invalid movie name or request',
+                'low_quality' => 'Cannot find good quality version',
+                'not_available' => 'Movie is not available anywhere'
+            ];
+            
+            $reason = $reason_map[$reason_key] ?? 'Not specified';
+            
+            $result = $requestSystem->rejectRequest($request_id, $user_id, $reason);
+            
+            if ($result['success']) {
+                $request = $result['request'];
+                $new_text = $message['text'] . "\n\n❌ <b>Rejected by Admin</b>\n📝 Reason: $reason\n🕒 " . date('H:i:s');
+                
+                editMessageText($chat_id, $message['message_id'], $new_text, null, 'HTML');
+                answerCallbackQuery($query['id'], "❌ Request #$request_id rejected");
+                
+                // Notify user
+                notifyUserAboutRequest($request['user_id'], $request, 'rejected');
+            } else {
+                answerCallbackQuery($query['id'], $result['message'], true);
+            }
+        }
+        elseif (strpos($data, 'reject_custom_') === 0) {
+            if ($user_id != ADMIN_ID) {
+                answerCallbackQuery($query['id'], "❌ Admin only!", true);
+                break;
+            }
+            
+            $request_id = str_replace('reject_custom_', '', $data);
+            
+            // Store in session
+            $_SESSION['pending_rejection'] = [
+                'request_id' => $request_id,
+                'admin_id' => $user_id,
+                'chat_id' => $chat_id,
+                'message_id' => $message['message_id']
+            ];
+            
+            sendMessage($chat_id, "Please send the custom rejection reason for Request #$request_id:");
+            answerCallbackQuery($query['id'], "Please type the custom reason");
+        }
+        elseif (strpos($data, 'bulk_approve_') === 0) {
+            if ($user_id != ADMIN_ID) {
+                answerCallbackQuery($query['id'], "❌ Admin only!", true);
+                break;
+            }
+            
+            $encoded_data = str_replace('bulk_approve_', '', $data);
+            $request_ids = json_decode(base64_decode($encoded_data), true);
+            
+            $result = $requestSystem->bulkApprove($request_ids, $user_id);
+            
+            $new_text = $message['text'] . "\n\n✅ <b>Bulk Approved {$result['approved_count']}/{$result['total_count']} requests</b>\n🕒 " . date('H:i:s');
+            
+            editMessageText($chat_id, $message['message_id'], $new_text, null, 'HTML');
+            answerCallbackQuery($query['id'], "✅ Approved {$result['approved_count']} requests");
+            
+            // Notify users
+            foreach ($request_ids as $req_id) {
+                $request = $requestSystem->getRequest($req_id);
+                if ($request && $request['status'] == 'approved') {
+                    notifyUserAboutRequest($request['user_id'], $request, 'approved');
+                }
+            }
+        }
+        elseif (strpos($data, 'bulk_reject_') === 0) {
+            if ($user_id != ADMIN_ID) {
+                answerCallbackQuery($query['id'], "❌ Admin only!", true);
+                break;
+            }
+            
+            $encoded_data = str_replace('bulk_reject_', '', $data);
+            $request_ids = json_decode(base64_decode($encoded_data), true);
+            
+            $reason = "Bulk rejected by admin";
+            $result = $requestSystem->bulkReject($request_ids, $user_id, $reason);
+            
+            $new_text = $message['text'] . "\n\n❌ <b>Bulk Rejected {$result['rejected_count']}/{$result['total_count']} requests</b>\n📝 Reason: $reason\n🕒 " . date('H:i:s');
+            
+            editMessageText($chat_id, $message['message_id'], $new_text, null, 'HTML');
+            answerCallbackQuery($query['id'], "❌ Rejected {$result['rejected_count']} requests");
+            
+            // Notify users
+            foreach ($request_ids as $req_id) {
+                $request = $requestSystem->getRequest($req_id);
+                if ($request && $request['status'] == 'rejected') {
+                    notifyUserAboutRequest($request['user_id'], $request, 'rejected');
+                }
+            }
+        }
+        elseif (strpos($data, 'pending_more_') === 0) {
+            if ($user_id != ADMIN_ID) {
+                answerCallbackQuery($query['id'], "❌ Admin only!", true);
+                break;
+            }
+            
+            $limit = str_replace('pending_more_', '', $data);
+            $requests = $requestSystem->getPendingRequests($limit);
+            $stats = $requestSystem->getStats();
+            
+            $message = "📋 <b>Pending Requests (Showing $limit)</b>\n\n";
+            $message .= "📊 <b>System Stats:</b>\n";
+            $message .= "• Total: " . $stats['total_requests'] . "\n";
+            $message .= "• Pending: " . $stats['pending'] . "\n";
+            $message .= "• Approved: " . $stats['approved'] . "\n";
+            $message .= "• Rejected: " . $stats['rejected'] . "\n\n";
+            
+            $message .= "🎬 <b>Showing " . count($requests) . " requests:</b>\n\n";
+            
+            $keyboard = ['inline_keyboard' => []];
+            
+            foreach ($requests as $req) {
+                $message .= "🔸 <b>#" . $req['id'] . ":</b> " . htmlspecialchars($req['movie_name']) . "\n";
+                $message .= "   👤 User: " . ($req['user_name'] ?: "ID: " . $req['user_id']) . "\n";
+                $message .= "   📅 Date: " . date('d M H:i', strtotime($req['created_at'])) . "\n\n";
+                
+                $keyboard['inline_keyboard'][] = [
+                    [
+                        'text' => '✅ Approve #' . $req['id'],
+                        'callback_data' => 'approve_' . $req['id']
+                    ],
+                    [
+                        'text' => '❌ Reject #' . $req['id'],
+                        'callback_data' => 'reject_' . $req['id']
+                    ]
+                ];
+            }
+            
+            // Add bulk action buttons
+            $request_ids = array_column($requests, 'id');
+            $current_page_data = base64_encode(json_encode($request_ids));
+            
+            $keyboard['inline_keyboard'][] = [
+                [
+                    'text' => '✅ Bulk Approve This Page',
+                    'callback_data' => 'bulk_approve_' . $current_page_data
+                ],
+                [
+                    'text' => '❌ Bulk Reject This Page',
+                    'callback_data' => 'bulk_reject_' . $current_page_data
+                ]
+            ];
+            
+            editMessageText($chat_id, $message['message_id'], $message, $keyboard, 'HTML');
+            answerCallbackQuery($query['id'], "Loaded $limit requests");
         }
     }
     
@@ -1748,6 +2747,7 @@ header('Content-Type: text/html; charset=utf-8');
         <div class="status-card">
             <h2>✅ Bot is Running</h2>
             <p>Telegram Bot for movie searches across multiple channels | Hosted on Render.com</p>
+            <p><strong>Movie Request System:</strong> ✅ Active</p>
         </div>
         
         <div class="btn-group">
@@ -1767,9 +2767,12 @@ header('Content-Type: text/html; charset=utf-8');
             <div class="stats-grid">
                 <?php
                 $csvManager = CSVManager::getInstance();
+                $requestSystem = RequestSystem::getInstance();
+                
                 $stats = $csvManager->getStats();
                 $users_data = json_decode(@file_get_contents(USERS_FILE), true);
                 $total_users = count($users_data['users'] ?? []);
+                $request_stats = $requestSystem->getStats();
                 ?>
                 <div class="stat-item">
                     <div>🎬 Total Movies</div>
@@ -1780,17 +2783,12 @@ header('Content-Type: text/html; charset=utf-8');
                     <div class="stat-value"><?php echo $total_users; ?></div>
                 </div>
                 <div class="stat-item">
-                    <div>📁 CSV Size</div>
-                    <div class="stat-value">
-                        <?php 
-                        $size = file_exists(CSV_FILE) ? filesize(CSV_FILE) : 0;
-                        echo round($size / 1024, 1) . ' KB';
-                        ?>
-                    </div>
+                    <div>📋 Total Requests</div>
+                    <div class="stat-value"><?php echo $request_stats['total_requests']; ?></div>
                 </div>
                 <div class="stat-item">
-                    <div>🕒 Uptime</div>
-                    <div class="stat-value">100%</div>
+                    <div>⏳ Pending</div>
+                    <div class="stat-value"><?php echo $request_stats['pending']; ?></div>
                 </div>
             </div>
         </div>
@@ -1824,9 +2822,13 @@ header('Content-Type: text/html; charset=utf-8');
             <h3>✨ Features</h3>
             <div class="feature-item">Multi-channel support (Public & Private channels)</div>
             <div class="feature-item">Smart movie search with partial matching</div>
-            <div class="feature-item">Typing indicators for better user experience</div>
-            <div class="feature-item">Public channels show source, private channels hide source</div>
-            <div class="feature-item">CSV-based database with intelligent caching</div>
+            <div class="feature-item">Movie Request System with moderation</div>
+            <div class="feature-item">Duplicate request blocking & flood control</div>
+            <div class="feature-item">Auto-approve when movie added to database</div>
+            <div class="feature-item">Admin moderation with inline buttons</div>
+            <div class="feature-item">Bulk approve/reject actions</div>
+            <div class="feature-item">User notification system</div>
+            <div class="feature-item">CSV-based database with caching</div>
             <div class="feature-item">Admin statistics and monitoring dashboard</div>
             <div class="feature-item">Pagination for browsing all movies</div>
             <div class="feature-item">Automatic channel post tracking and indexing</div>
@@ -1840,7 +2842,9 @@ header('Content-Type: text/html; charset=utf-8');
                 <li style="margin-bottom: 10px;">Click "Set Webhook" to configure Telegram webhook</li>
                 <li style="margin-bottom: 10px;">Test the bot using the "Test Bot" button</li>
                 <li style="margin-bottom: 10px;">Start searching movies in Telegram bot</li>
-                <li style="margin-bottom: 10px;">Use /help command in bot for available commands</li>
+                <li style="margin-bottom: 10px;">Use /request or type "pls add MovieName" to request movies</li>
+                <li style="margin-bottom: 10px;">Check status with /myrequests command</li>
+                <li style="margin-bottom: 10px;">Admins: Use /pendingrequests to moderate requests</li>
             </ol>
         </div>
         

@@ -36,7 +36,7 @@ Options -Indexes
     Deny from all
 </FilesMatch>
 
-<FilesMatch "\.(json|csv|log|ini|env)$">
+<FilesMatch "\.(json|csv|log|ini|env|sql|db)$">
     Order allow,deny
     Deny from all
 </FilesMatch>
@@ -46,3 +46,16 @@ Options -Indexes
     Order allow,deny
     Allow from all
 </Files>
+
+# PHP Settings
+php_value session.save_path "/tmp"
+php_value session.gc_maxlifetime 1440
+php_value upload_max_filesize 100M
+php_value post_max_size 100M
+php_value memory_limit 256M
+php_value max_execution_time 300
+
+# Cache control for static files
+<FilesMatch "\.(ico|pdf|flv|jpg|jpeg|png|gif|js|css|swf)$">
+    Header set Cache-Control "max-age=86400, public"
+</FilesMatch>

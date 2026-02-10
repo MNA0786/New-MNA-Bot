@@ -38,6 +38,8 @@ services:
         value: 21944581
       - key: API_HASH
         value: 7b1c174a5cd3466e25a976c39a791737
-    healthCheckPath: /?test=1
+    healthCheckPath: /
     autoDeploy: true
     plan: free
+    domains:
+      - entertainment-tadka-bot.onrender.com
