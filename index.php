@@ -1330,7 +1330,7 @@ function advanced_search($chat_id, $query, $user_id = null) {
     
     $q = validateInput($query, 'movie_name');
     if (!$q) {
-        sendMessage($chat_id, "❌ Invalid movie name format.");
+        sendMessage($chat_id, "❌ Invalid movie name format.", null, 'HTML');
         return;
     }
     
@@ -1340,7 +1340,7 @@ function advanced_search($chat_id, $query, $user_id = null) {
     
     // 1. Minimum length check
     if (strlen($q) < 2) {
-        sendMessage($chat_id, "❌ Please enter at least 2 characters for search");
+        sendMessage($chat_id, "❌ Please enter at least 2 characters for search", null, 'HTML');
         return;
     }
     
@@ -1383,7 +1383,7 @@ function advanced_search($chat_id, $query, $user_id = null) {
             if ($i > 10) break;
         }
         
-        sendMessage($chat_id, $msg);
+        sendMessage($chat_id, $msg, null, 'HTML');
         
         // Create inline keyboard with top 5 results
         $keyboard = ['inline_keyboard' => []];
@@ -1397,7 +1397,7 @@ function advanced_search($chat_id, $query, $user_id = null) {
             if ($count >= 5) break;
         }
         
-        sendMessage($chat_id, "🚀 Select a movie to get all copies:", $keyboard);
+        sendMessage($chat_id, "🚀 Select a movie to get all copies:", $keyboard, 'HTML');
         
         // Update user points if user_id provided
         if ($user_id) {
@@ -1412,7 +1412,7 @@ function advanced_search($chat_id, $query, $user_id = null) {
             'hindi' => "😔 Yeh movie abhi available nahi hai!\n\n📢 Join: @EntertainmentTadka786",
             'english' => "😔 This movie isn't available yet!\n\n📢 Join: @EntertainmentTadka786"
         ];
-        sendMessage($chat_id, $messages[$lang]);
+        sendMessage($chat_id, $messages[$lang], null, 'HTML');
         log_error("No results found for query", 'INFO', ['query' => $query]);
     }
     
@@ -1561,7 +1561,7 @@ function totalupload_controller($chat_id, $page = 1) {
     
     $all = $csvManager->getCachedData();
     if (empty($all)) {
-        sendMessage($chat_id, "⚠️ No movies found in database.");
+        sendMessage($chat_id, "⚠️ No movies found in database.", null, 'HTML');
         log_error("No movies found for pagination", 'WARNING');
         return;
     }
@@ -1625,7 +1625,7 @@ function test_csv($chat_id) {
     $data = $csvManager->getCachedData();
     
     if (empty($data)) {
-        sendMessage($chat_id, "📊 CSV file is empty.");
+        sendMessage($chat_id, "📊 CSV file is empty.", null, 'HTML');
         return;
     }
     
@@ -1653,7 +1653,7 @@ function show_csv_data($chat_id, $show_all = false) {
     $data = $csvManager->getCachedData();
     
     if (empty($data)) {
-        sendMessage($chat_id, "📊 CSV file is empty.");
+        sendMessage($chat_id, "📊 CSV file is empty.", null, 'HTML');
         return;
     }
     
@@ -1938,7 +1938,7 @@ if ($update) {
                             ['text' => '🎭 Theater Prints', 'url' => 'https://t.me/threater_print_movies']
                         ],
                         [
-                            ['text' => '📥 How to Request?', 'callback_data' => 'request_movie'],  // ✅ NEW BUTTON
+                            ['text' => '📥 How to Request?', 'callback_data' => 'request_movie'],
                             ['text' => '🔒 Backup Channel', 'url' => 'https://t.me/ETBackup']
                         ],
                         [
@@ -1994,12 +1994,12 @@ if ($update) {
             }
             elseif ($command == '/request') {
                 if (!REQUEST_SYSTEM_ENABLED) {
-                    sendMessage($chat_id, "❌ Request system is currently disabled.");
+                    sendMessage($chat_id, "❌ Request system is currently disabled.", null, 'HTML');
                     return;
                 }
                 
                 if (!isset($parts[1])) {
-                    sendMessage($chat_id, "📝 Usage: /request Movie Name\nExample: /request KGF Chapter 3\n\nYou can also type: 'pls add MovieName'");
+                    sendMessage($chat_id, "📝 Usage: /request Movie Name\nExample: /request KGF Chapter 3\n\nYou can also type: 'pls add MovieName'", null, 'HTML');
                     return;
                 }
                 
@@ -2007,11 +2007,11 @@ if ($update) {
                 $user_name = $message['from']['first_name'] . ($message['from']['last_name'] ? ' ' . $message['from']['last_name'] : '');
                 
                 $result = $requestSystem->submitRequest($user_id, $movie_name, $user_name);
-                sendMessage($chat_id, $result['message']);
+                sendMessage($chat_id, $result['message'], null, 'HTML');
             }
             elseif ($command == '/myrequests') {
                 if (!REQUEST_SYSTEM_ENABLED) {
-                    sendMessage($chat_id, "❌ Request system is currently disabled.");
+                    sendMessage($chat_id, "❌ Request system is currently disabled.", null, 'HTML');
                     return;
                 }
                 
@@ -2019,7 +2019,7 @@ if ($update) {
                 $user_stats = $requestSystem->getUserStats($user_id);
                 
                 if (empty($requests)) {
-                    sendMessage($chat_id, "📭 You haven't made any requests yet.\nUse /request MovieName to request a movie.\n\nOr type: 'pls add MovieName'");
+                    sendMessage($chat_id, "📭 You haven't made any requests yet.\nUse /request MovieName to request a movie.\n\nOr type: 'pls add MovieName'", null, 'HTML');
                     return;
                 }
                 
@@ -2046,7 +2046,7 @@ if ($update) {
             }
             elseif ($command == '/pendingrequests' && in_array($user_id, ADMIN_IDS)) {
                 if (!REQUEST_SYSTEM_ENABLED) {
-                    sendMessage($chat_id, "❌ Request system is currently disabled.");
+                    sendMessage($chat_id, "❌ Request system is currently disabled.", null, 'HTML');
                     return;
                 }
                 
@@ -2069,7 +2069,7 @@ if ($update) {
                     if ($filter_movie) {
                         $msg .= " for '$filter_movie'";
                     }
-                    sendMessage($chat_id, $msg . ".");
+                    sendMessage($chat_id, $msg . ".", null, 'HTML');
                     return;
                 }
                 
@@ -2170,7 +2170,7 @@ if ($update) {
         )) {
             
             if (!REQUEST_SYSTEM_ENABLED) {
-                sendMessage($chat_id, "❌ Request system is currently disabled.");
+                sendMessage($chat_id, "❌ Request system is currently disabled.", null, 'HTML');
                 return;
             }
             
@@ -2200,13 +2200,13 @@ if ($update) {
             }
             
             if (strlen($movie_name) < 2) {
-                sendMessage($chat_id, "🎬 Please specify which movie you want to add.\nExample: 'Please add KGF Chapter 3' or use /request command");
+                sendMessage($chat_id, "🎬 Please specify which movie you want to add.\nExample: 'Please add KGF Chapter 3' or use /request command", null, 'HTML');
                 return;
             }
             
             $user_name = $message['from']['first_name'] . ($message['from']['last_name'] ? ' ' . $message['from']['last_name'] : '');
             $result = $requestSystem->submitRequest($user_id, $movie_name, $user_name);
-            sendMessage($chat_id, $result['message']);
+            sendMessage($chat_id, $result['message'], null, 'HTML');
         }
         // Normal movie search
         elseif (!empty(trim($text))) {
@@ -2261,10 +2261,7 @@ if ($update) {
                         " (Forwarded from " . getChannelUsername($movie_items[0]['channel_id']) . ")" :
                         " (Source hidden)";
                     
-                    sendMessage($chat_id, 
-                        "✅ Sent $sent_count copies of '$movie_name'$source_note\n\n" .
-                        "📢 Join: @EntertainmentTadka786"
-                    );
+                    sendMessage($chat_id, "✅ Sent $sent_count copies of '$movie_name'$source_note\n\n📢 Join: @EntertainmentTadka786", null, 'HTML');
                     answerCallbackQuery($query['id'], "🎬 $sent_count items sent!");
                     
                     log_error("Movie delivery completed", 'INFO', [
@@ -2305,10 +2302,10 @@ if ($update) {
             answerCallbackQuery($query['id'], "✅ Re-sent $sent movies");
         }
         elseif ($data === 'tu_stop') {
-            sendMessage($chat_id, "✅ Pagination stopped. Type /totalupload to start again.");
+            sendMessage($chat_id, "✅ Pagination stopped. Type /totalupload to start again.", null, 'HTML');
             answerCallbackQuery($query['id'], "Stopped");
         }
-        elseif ($data === 'request_movie') {   // ✅ NEW REQUEST GUIDE BLOCK - EXACTLY AS PER YOUR COMMAND
+        elseif ($data === 'request_movie') {
             $message_text = "📝 <b>Movie Request Guide</b>\n\n";
             $message_text .= "🎬 <b>2 tarike hain movie request karne ke:</b>\n\n";
             $message_text .= "1️⃣ <b>Command se:</b>\n";
@@ -2364,14 +2361,15 @@ if ($update) {
             
             $help_text .= "⚠️ <b>Note:</b> This bot works with webhook. If you face issues, contact admin.";
             
-            editMessageText($chat_id, $message['message_id'], $help_text, [
+            $keyboard = [
                 'inline_keyboard' => [
                     [
                         ['text' => '🔙 Back to Start', 'callback_data' => 'back_to_start']
                     ]
                 ]
-            ], 'HTML');
+            ];
             
+            editMessageText($chat_id, $message['message_id'], $help_text, $keyboard, 'HTML');
             answerCallbackQuery($query['id'], "Help information loaded");
         }
         elseif ($data === 'back_to_start') {
@@ -2423,7 +2421,6 @@ if ($update) {
             ];
             
             editMessageText($chat_id, $message['message_id'], $welcome, $keyboard, 'HTML');
-            
             answerCallbackQuery($query['id'], "Welcome back!");
         }
         elseif ($data === 'show_stats') {
@@ -2447,15 +2444,16 @@ if ($update) {
                 $stats_text .= $type_icon . " " . $channel_name . ": " . $count . " movies\n";
             }
             
-            editMessageText($chat_id, $message['message_id'], $stats_text, [
+            $keyboard = [
                 'inline_keyboard' => [
                     [
                         ['text' => '🔙 Back to Start', 'callback_data' => 'back_to_start'],
                         ['text' => '🔄 Refresh', 'callback_data' => 'show_stats']
                     ]
                 ]
-            ], 'HTML');
+            ];
             
+            editMessageText($chat_id, $message['message_id'], $stats_text, $keyboard, 'HTML');
             answerCallbackQuery($query['id'], "Statistics updated");
         }
         elseif (strpos($data, 'approve_') === 0) {
@@ -2506,9 +2504,7 @@ if ($update) {
                 ]
             ];
             
-            editMessageText($chat_id, $message['message_id'], 
-                "Select rejection reason for Request #$request_id:", $keyboard);
-            
+            editMessageText($chat_id, $message['message_id'], "Select rejection reason for Request #$request_id:", $keyboard, 'HTML');
             answerCallbackQuery($query['id'], "Select rejection reason");
         }
         elseif (strpos($data, 'reject_reason_') === 0) {
@@ -2554,7 +2550,7 @@ if ($update) {
             $request_id = str_replace('reject_custom_', '', $data);
             
             // Ask for custom reason
-            sendMessage($chat_id, "Please send the custom rejection reason for Request #$request_id:");
+            sendMessage($chat_id, "Please send the custom rejection reason for Request #$request_id:", null, 'HTML');
             answerCallbackQuery($query['id'], "Please type the custom reason");
             
             // Store pending rejection in a file (not session)
@@ -2627,23 +2623,23 @@ if ($update) {
             $requests = $requestSystem->getPendingRequests($limit);
             $stats = $requestSystem->getStats();
             
-            $message = "📋 <b>Pending Requests (Showing $limit)</b>\n\n";
-            $message .= "📊 <b>System Stats:</b>\n";
-            $message .= "• Total: " . $stats['total_requests'] . "\n";
-            $message .= "• Pending: " . $stats['pending'] . "\n";
-            $message .= "• Approved: " . $stats['approved'] . "\n";
-            $message .= "• Rejected: " . $stats['rejected'] . "\n\n";
+            $message_text = "📋 <b>Pending Requests (Showing $limit)</b>\n\n";
+            $message_text .= "📊 <b>System Stats:</b>\n";
+            $message_text .= "• Total: " . $stats['total_requests'] . "\n";
+            $message_text .= "• Pending: " . $stats['pending'] . "\n";
+            $message_text .= "• Approved: " . $stats['approved'] . "\n";
+            $message_text .= "• Rejected: " . $stats['rejected'] . "\n\n";
             
-            $message .= "🎬 <b>Showing " . count($requests) . " requests:</b>\n\n";
+            $message_text .= "🎬 <b>Showing " . count($requests) . " requests:</b>\n\n";
             
             $keyboard = ['inline_keyboard' => []];
             
             foreach ($requests as $req) {
                 $movie_name = htmlspecialchars($req['movie_name'], ENT_QUOTES, 'UTF-8');
                 $user_name = htmlspecialchars($req['user_name'] ?: "ID: " . $req['user_id'], ENT_QUOTES, 'UTF-8');
-                $message .= "🔸 <b>#" . $req['id'] . ":</b> " . $movie_name . "\n";
-                $message .= "   👤 User: " . $user_name . "\n";
-                $message .= "   📅 Date: " . date('d M H:i', strtotime($req['created_at'])) . "\n\n";
+                $message_text .= "🔸 <b>#" . $req['id'] . ":</b> " . $movie_name . "\n";
+                $message_text .= "   👤 User: " . $user_name . "\n";
+                $message_text .= "   📅 Date: " . date('d M H:i', strtotime($req['created_at'])) . "\n\n";
                 
                 $keyboard['inline_keyboard'][] = [
                     [
@@ -2672,7 +2668,7 @@ if ($update) {
                 ]
             ];
             
-            editMessageText($chat_id, $message['message_id'], $message, $keyboard, 'HTML');
+            editMessageText($chat_id, $message['message_id'], $message_text, $keyboard, 'HTML');
             answerCallbackQuery($query['id'], "Loaded $limit requests");
         }
     }
@@ -2692,15 +2688,14 @@ if ($update) {
                 
                 // Update original message
                 $update_text = "❌ <b>Rejected by Admin</b>\n📝 Reason: $reason\n🕒 " . date('H:i:s');
-                editMessageText($pending_data['chat_id'], $pending_data['message_id'], 
-                    $message['text'] . "\n\n" . $update_text, null, 'HTML');
+                editMessageText($pending_data['chat_id'], $pending_data['message_id'], $message['text'] . "\n\n" . $update_text, null, 'HTML');
                 
-                sendMessage($chat_id, "✅ Request #$request_id rejected with custom reason.");
+                sendMessage($chat_id, "✅ Request #$request_id rejected with custom reason.", null, 'HTML');
                 
                 // Notify user
                 notifyUserAboutRequest($request['user_id'], $request, 'rejected');
             } else {
-                sendMessage($chat_id, "❌ Failed: " . $result['message']);
+                sendMessage($chat_id, "❌ Failed: " . $result['message'], null, 'HTML');
             }
             
             // Clean up
@@ -3092,7 +3087,7 @@ header('Content-Type: text/html; charset=utf-8');
         
         <footer>
             <p>🎬 Entertainment Tadka Bot | Powered by PHP & Telegram Bot API | Hosted on Render.com</p>
-            <p style="margin-top: 10px; font-size: 0.9em;">© <?php echo date('Y'); ?> - All rights reserved | Secure Version 2.0 | Request Guide Added</p>
+            <p style="margin-top: 10px; font-size: 0.9em;">© <?php echo date('Y'); ?> - All rights reserved | Secure Version 2.0 | Request Guide Added | HTML Parse Fixed</p>
         </footer>
     </div>
 </body>
@@ -3100,4 +3095,5 @@ header('Content-Type: text/html; charset=utf-8');
 <?php
 // ==================== END OF FILE ====================
 // Exact line count: 3152 lines (including this comment)
+// HTML parse mode fixed in all sendMessage() and editMessageText() calls
 ?>
