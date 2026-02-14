@@ -111,6 +111,7 @@ $ENV_CONFIG = [
     'USERS_FILE' => 'users.json',
     'STATS_FILE' => 'bot_stats.json',
     'REQUESTS_FILE' => 'requests.json',
+    'AUTO_DELETE_FILE' => 'auto_delete.json',
     'BACKUP_DIR' => 'backups/',
     'CACHE_DIR' => 'cache/',
     
@@ -144,6 +145,7 @@ define('CSV_FILE', $ENV_CONFIG['CSV_FILE']);
 define('USERS_FILE', $ENV_CONFIG['USERS_FILE']);
 define('STATS_FILE', $ENV_CONFIG['STATS_FILE']);
 define('REQUESTS_FILE', $ENV_CONFIG['REQUESTS_FILE']);
+define('AUTO_DELETE_FILE', $ENV_CONFIG['AUTO_DELETE_FILE']);
 define('BACKUP_DIR', $ENV_CONFIG['BACKUP_DIR']);
 define('CACHE_DIR', $ENV_CONFIG['CACHE_DIR']);
 define('CACHE_EXPIRY', $ENV_CONFIG['CACHE_EXPIRY']);
@@ -178,7 +180,7 @@ function validateInput($input, $type = 'text') {
             if (!preg_match('/^[\p{L}\p{N}\s\-\.\,\&\+\'\"\(\)\!\:\;\?]{2,200}$/u', $input)) {
                 return false;
             }
-            return htmlspecialchars($input, ENT_QUOTES, 'UTF-8');
+            return $input; // No htmlspecialchars to preserve HTML tags
             
         case 'user_id':
             return preg_match('/^\d+$/', $input) ? intval($input) : false;
@@ -191,11 +193,11 @@ function validateInput($input, $type = 'text') {
             
         case 'filename':
             $input = basename($input);
-            $allowed_files = ['movies.csv', 'users.json', 'bot_stats.json', 'requests.json'];
+            $allowed_files = ['movies.csv', 'users.json', 'bot_stats.json', 'requests.json', 'auto_delete.json'];
             return in_array($input, $allowed_files) ? $input : false;
             
         default:
-            return htmlspecialchars($input, ENT_QUOTES, 'UTF-8');
+            return $input; // No htmlspecialchars to preserve HTML tags
     }
 }
 
@@ -239,6 +241,439 @@ class RateLimiter {
         
         self::$limits[$key][] = $now;
         return true;
+    }
+}
+
+// ==================== HINGLISH LANGUAGE FUNCTIONS ====================
+function detectUserLanguage($text) {
+    // Hindi Unicode range aur common Hindi words check karo
+    $hindi_pattern = '/[\x{0900}-\x{097F}]/u';
+    $hindi_words = ['है', 'हूं', 'का', 'की', 'के', 'में', 'से', 'को', 'पर', 'और', 'या', 'यह', 'वह', 'मैं', 'तुम', 'आप', 'क्या', 'क्यों', 'कैसे', 'कब', 'कहां', 'नहीं', 'बहुत', 'अच्छा', 'बुरा', 'था', 'थी', 'थे', 'गया', 'गई', 'गए'];
+    
+    $is_hindi = preg_match($hindi_pattern, $text);
+    
+    if ($is_hindi) {
+        return 'hindi';
+    }
+    
+    // Common Hinglish words check
+    $hinglish_words = ['hai', 'hain', 'ka', 'ki', 'ke', 'mein', 'se', 'ko', 'par', 'aur', 'kya', 'kyun', 'kaise', 'kab', 'kahan', 'nahi', 'bahut', 'acha', 'bura', 'tha', 'the', 'gaya', 'gayi', 'bole', 'bolo', 'kar', 'karo', 'de', 'do', 'le', 'lo'];
+    
+    $words = explode(' ', strtolower($text));
+    $hinglish_count = 0;
+    
+    foreach ($words as $word) {
+        if (in_array($word, $hinglish_words)) {
+            $hinglish_count++;
+        }
+    }
+    
+    if ($hinglish_count >= 2) {
+        return 'hinglish';
+    }
+    
+    return 'english';
+}
+
+function getHinglishResponse($key, $vars = []) {
+    $responses = [
+        // Welcome messages
+        'welcome' => "🎬 <b>Entertainment Tadka mein aapka swagat hai!</b>\n\n" .
+                     "📢 <b>Bot kaise use karein:</b>\n" .
+                     "• Bus movie ka naam likho\n" .
+                     "• English ya Hindi dono mein likh sakte ho\n" .
+                     "• 'theater' add karo theater print ke liye\n" .
+                     "• Thoda sa naam bhi kaafi hai\n\n" .
+                     "🔍 <b>Examples:</b>\n" .
+                     "• Mandala Murders 2025\n" .
+                     "• Lokah Chapter 1 Chandra 2025\n" .
+                     "• Idli Kadai (2025)\n" .
+                     "• IT - Welcome to Derry (2025) S01\n" .
+                     "• hindi movie\n" .
+                     "• kgf\n\n" .
+                     "📢 <b>Hamare Channels:</b>\n" .
+                     "🍿 Main: @EntertainmentTadka786\n" .
+                     "🎭 Theater: @threater_print_movies\n" .
+                     "📥 Requests: @EntertainmentTadka7860\n" .
+                     "🔒 Backup: @ETBackup\n\n" .
+                     "🎬 <b>Movie Request System:</b>\n" .
+                     "• /request MovieName se request karo\n" .
+                     "• Ya likho: 'pls add MovieName'\n" .
+                     "• Status check karo /myrequests se\n" .
+                     "• Roz sirf 3 requests kar sakte ho\n\n" .
+                     "💡 <b>Tip:</b> /help se saari commands dekho",
+        
+        'welcome_hindi' => "🎬 <b>Entertainment Tadka mein aapka hardik swagat hai!</b>\n\n" .
+                           "📢 <b>Bot kaise use karein:</b>\n" .
+                           "• Bus movie ka naam likhiye\n" .
+                           "• English ya Hindi dono mein likh sakte hain\n" .
+                           "• 'theater' likhein theater print ke liye\n" .
+                           "• Thoda sa naam bhi kaafi hai\n\n" .
+                           "🔍 <b>Examples:</b>\n" .
+                           "• Mandala Murders 2025\n" .
+                           "• Lokah Chapter 1 Chandra 2025\n" .
+                           "• Idli Kadai (2025)\n" .
+                           "• IT - Welcome to Derry (2025) S01\n" .
+                           "• hindi movie\n" .
+                           "• kgf\n\n" .
+                           "📢 <b>Hamare Channels:</b>\n" .
+                           "🍿 Main: @EntertainmentTadka786\n" .
+                           "🎭 Theater: @threater_print_movies\n" .
+                           "📥 Requests: @EntertainmentTadka7860\n" .
+                           "🔒 Backup: @ETBackup\n\n" .
+                           "🎬 <b>Movie Request System:</b>\n" .
+                           "• /request MovieName se request karein\n" .
+                           "• Ya likhein: 'pls add MovieName'\n" .
+                           "• Status check karein /myrequests se\n" .
+                           "• Roz sirf 3 requests kar sakte hain\n\n" .
+                           "💡 <b>Tip:</b> /help se saari commands dekhein",
+        
+        // Help messages
+        'help' => "🤖 <b>Entertainment Tadka Bot - Madad</b>\n\n" .
+                  "📋 <b>Commands:</b>\n" .
+                  "/start - Welcome message\n" .
+                  "/help - Yeh help message\n" .
+                  "/request MovieName - Naya movie request karo\n" .
+                  "/myrequests - Apni requests dekho\n" .
+                  "/checkdate - Statistics dekho\n" .
+                  "/totalupload - Saari movies browse karo\n" .
+                  "/testcsv - Database ki movies dekho\n" .
+                  "/checkcsv - CSV data check karo\n" .
+                  "/csvstats - CSV statistics\n" .
+                  "/language - Bhasha badlo\n\n" .
+                  "🔍 <b>Search kaise karein:</b>\n" .
+                  "• Bus movie ka naam likho\n" .
+                  "• Thoda sa naam bhi kaafi hai\n" .
+                  "• Example: 'kgf', 'pushpa', 'hindi movie'\n\n" .
+                  "🎬 <b>Movie Requests:</b>\n" .
+                  "• /request MovieName use karo\n" .
+                  "• Ya likho: 'pls add MovieName'\n" .
+                  "• Roz 3 requests max\n" .
+                  "• Status check: /myrequests",
+        
+        // Search results
+        'search_found' => "🔍 <b>{count} movies mil gaye '{query}' ke liye ({total_items} items):</b>\n\n{results}",
+        
+        'search_select' => "🚀 <b>Movie select karo saari copies pane ke liye:</b>",
+        
+        'search_not_found' => "😔 <b>Yeh movie abhi available nahi hai!</b>\n\n📢 Join: @EntertainmentTadka786",
+        
+        'search_not_found_hindi' => "😔 <b>Yeh movie abhi available nahi hai!</b>\n\n📢 Join: @EntertainmentTadka786",
+        
+        'invalid_search' => "🎬 <b>Please enter a valid movie name!</b>\n\nExamples:\n• kgf\n• pushpa\n• avengers\n\n📢 Join: @EntertainmentTadka786",
+        
+        // Request system
+        'request_success' => "✅ <b>Request successfully submit ho gayi!</b>\n\n🎬 Movie: {movie}\n📝 ID: #{id}\n🕒 Status: Pending\n\nApprove hote hi notification mil jayega.",
+        
+        'request_duplicate' => "⚠️ <b>Yeh movie aap already request kar chuke ho!</b>\n\nThoda wait karo dubara request karne se pehle.",
+        
+        'request_limit' => "❌ <b>Aapne daily limit reach kar li hai!</b>\n\nRoz sirf {limit} requests kar sakte ho. Kal try karo.",
+        
+        'request_guide' => "📝 <b>Movie Request Guide</b>\n\n" .
+                           "🎬 <b>2 tarike hain movie request karne ke:</b>\n\n" .
+                           "1️⃣ <b>Command se:</b>\n" .
+                           "<code>/request Movie Name</code>\n" .
+                           "Example: /request KGF Chapter 3\n\n" .
+                           "2️⃣ <b>Natural Language se:</b>\n" .
+                           "• pls add Movie Name\n" .
+                           "• please add Movie Name\n" .
+                           "• can you add Movie Name\n" .
+                           "• request movie Movie Name\n\n" .
+                           "📌 <b>Limit:</b> {limit} requests per day\n" .
+                           "⏳ <b>Status Check:</b> /myrequests\n\n" .
+                           "🔗 <b>Request Channel:</b> @EntertainmentTadka7860",
+        
+        // My requests
+        'myrequests_empty' => "📭 <b>Aapne abhi tak koi request nahi ki hai.</b>\n\n/request MovieName use karo movie request karne ke liye.\n\nYa likho: 'pls add MovieName'",
+        
+        'myrequests_header' => "📋 <b>Aapki Movie Requests</b>\n\n📊 <b>Stats:</b>\n• Total: {total}\n• Approved: {approved}\n• Pending: {pending}\n• Rejected: {rejected}\n• Aaj: {today}/{limit}\n\n🎬 <b>Recent Requests:</b>\n\n",
+        
+        // Stats
+        'stats' => "📊 <b>Bot Statistics</b>\n\n🎬 Total Movies: {movies}\n👥 Total Users: {users}\n🔍 Total Searches: {searches}\n🕒 Last Updated: {updated}\n\n📡 Movies by Channel:\n{channels}",
+        
+        'csv_stats' => "📊 <b>CSV Database Statistics</b>\n\n📁 File Size: {size} KB\n📄 Total Movies: {movies}\n🕒 Last Cache Update: {updated}\n\n📡 Movies by Channel:\n{channels}",
+        
+        // Pagination
+        'totalupload' => "📊 Total Uploads\n• Page {page}/{total_pages}\n• Showing: {showing} of {total}\n\n➡️ Buttons use karo navigate karne ke liye",
+        
+        // Auto-delete
+        'auto_delete_warning' => "⚠️ <b>Warning!</b> Yeh message {minutes} minute mein automatically delete ho jayega!",
+        
+        'auto_delete_stats' => "🗑️ <b>Auto-Delete Statistics</b>\n\n⏱️ Timeout: {timeout} minutes\n🗑️ Total Deleted: {total_deleted}\n⏳ Pending: {pending}\n🕒 Last Cleanup: {last_cleanup}",
+        
+        // Errors
+        'error' => "❌ <b>Error:</b> {message}",
+        'maintenance' => "🛠️ <b>Bot Under Maintenance</b>\n\nWe're temporarily unavailable for updates.\nWill be back in few days!\n\nThanks for patience 🙏",
+        
+        // Language
+        'language_choose' => "🌐 <b>Choose your language / अपनी भाषा चुनें:</b>",
+        'language_set' => "✅ {lang}",
+        'language_english' => "Language set to English",
+        'language_hindi' => "भाषा हिंदी में सेट हो गई",
+        'language_hinglish' => "Hinglish mode active!"
+    ];
+    
+    $response = isset($responses[$key]) ? $responses[$key] : $key;
+    
+    // Replace variables
+    foreach ($vars as $var => $value) {
+        $response = str_replace('{' . $var . '}', $value, $response);
+    }
+    
+    return $response;
+}
+
+function getUserLanguage($user_id) {
+    // User ki language users.json mein store karo
+    if (file_exists(USERS_FILE)) {
+        $users_data = json_decode(file_get_contents(USERS_FILE), true);
+        if (isset($users_data['users'][$user_id]['language'])) {
+            return $users_data['users'][$user_id]['language'];
+        }
+    }
+    return 'hinglish'; // Default Hinglish
+}
+
+function setUserLanguage($user_id, $lang) {
+    if (!file_exists(USERS_FILE)) {
+        return;
+    }
+    
+    $users_data = json_decode(file_get_contents(USERS_FILE), true);
+    if (!$users_data) {
+        $users_data = ['users' => []];
+    }
+    
+    if (!isset($users_data['users'][$user_id])) {
+        $users_data['users'][$user_id] = [];
+    }
+    
+    $users_data['users'][$user_id]['language'] = $lang;
+    file_put_contents(USERS_FILE, json_encode($users_data, JSON_PRETTY_PRINT));
+}
+
+function sendHinglish($chat_id, $key, $vars = [], $reply_markup = null) {
+    $message = getHinglishResponse($key, $vars);
+    return sendMessage($chat_id, $message, $reply_markup, 'HTML');
+}
+
+// ==================== AUTO-DELETE FEATURE ====================
+class AutoDelete {
+    private static $instance = null;
+    private $db_file = 'auto_delete.json';
+    
+    // 🔥 HARDCODED RULES - KOI OPTION NAHI
+    private $timeout = 30; // 30 minutes
+    private $warning_before = 5; // 5 minutes pehle warning
+    
+    public static function getInstance() {
+        if (self::$instance === null) {
+            self::$instance = new self();
+        }
+        return self::$instance;
+    }
+    
+    private function __construct() {
+        $this->initializeDatabase();
+    }
+    
+    private function initializeDatabase() {
+        if (!file_exists($this->db_file)) {
+            $default_data = [
+                'messages' => [],
+                'stats' => [
+                    'total_deleted' => 0,
+                    'last_cleanup' => date('Y-m-d H:i:s')
+                ]
+            ];
+            file_put_contents($this->db_file, json_encode($default_data, JSON_PRETTY_PRINT));
+            @chmod($this->db_file, 0666);
+            log_error("Auto-delete database created", 'INFO');
+        }
+    }
+    
+    private function loadData() {
+        $data = json_decode(file_get_contents($this->db_file), true);
+        if (!$data) {
+            $data = [
+                'messages' => [],
+                'stats' => [
+                    'total_deleted' => 0,
+                    'last_cleanup' => date('Y-m-d H:i:s')
+                ]
+            ];
+        }
+        return $data;
+    }
+    
+    private function saveData($data) {
+        return file_put_contents($this->db_file, json_encode($data, JSON_PRETTY_PRINT));
+    }
+    
+    /**
+     * 🔥 DIRECT RULES - KYA DELETE HOGA:
+     * 
+     * ✅ User ke FORWARD messages → DELETE
+     * ✅ Bot ke replies → DELETE
+     * ✅ Group mein koi bhi forward → DELETE
+     * ❌ Commands (/start, /help etc.) → SAFE
+     * ❌ Admin messages → SAFE
+     * ❌ Channel posts → SAFE
+     */
+    public function shouldDelete($user_id, $is_forward, $is_command, $chat_type) {
+        
+        // CHANNEL POSTS - kabhi delete mat karo
+        if ($chat_type === 'channel') {
+            log_error("Channel post - NO DELETE", 'INFO');
+            return false;
+        }
+        
+        // ADMIN MESSAGES - kabhi delete mat karo
+        if (in_array($user_id, ADMIN_IDS)) {
+            log_error("Admin message - NO DELETE", 'INFO', ['user_id' => $user_id]);
+            return false;
+        }
+        
+        // COMMANDS - kabhi delete mat karo
+        if ($is_command) {
+            log_error("Command message - NO DELETE", 'INFO');
+            return false;
+        }
+        
+        // FORWARD MESSAGES - hamesha delete karo
+        if ($is_forward) {
+            log_error("Forward message - WILL DELETE", 'INFO');
+            return true;
+        }
+        
+        // NORMAL USER MESSAGES - delete karo
+        log_error("Normal user message - WILL DELETE", 'INFO');
+        return true;
+    }
+    
+    /**
+     * Message register karo auto-delete ke liye
+     */
+    public function registerMessage($chat_id, $message_id, $user_id = null, $is_forward = false, $is_command = false, $chat_type = 'private') {
+        
+        // Check karo delete karna hai ya nahi
+        if (!$this->shouldDelete($user_id, $is_forward, $is_command, $chat_type)) {
+            return false;
+        }
+        
+        $data = $this->loadData();
+        
+        $delete_time = time() + ($this->timeout * 60);
+        $warning_time = $delete_time - ($this->warning_before * 60);
+        
+        $message_entry = [
+            'chat_id' => $chat_id,
+            'message_id' => $message_id,
+            'user_id' => $user_id,
+            'is_forward' => $is_forward,
+            'registered_at' => time(),
+            'delete_at' => $delete_time,
+            'warning_sent' => false,
+            'warning_time' => $warning_time,
+            'status' => 'pending'
+        ];
+        
+        $data['messages'][] = $message_entry;
+        $this->saveData($data);
+        
+        log_error("Message registered for auto-delete", 'INFO', [
+            'chat_id' => $chat_id,
+            'message_id' => $message_id,
+            'delete_in' => $this->timeout . ' minutes'
+        ]);
+        
+        return true;
+    }
+    
+    /**
+     * Check karo ki konse messages delete karne hain
+     */
+    public function checkAndDelete() {
+        $data = $this->loadData();
+        $now = time();
+        $deleted_count = 0;
+        $remaining_messages = [];
+        
+        foreach ($data['messages'] as $msg) {
+            // Delete time aa gaya?
+            if ($now >= $msg['delete_at']) {
+                $this->deleteMessage($msg['chat_id'], $msg['message_id']);
+                $deleted_count++;
+                $data['stats']['total_deleted']++;
+                log_error("Auto-deleted message", 'INFO', [
+                    'chat_id' => $msg['chat_id'],
+                    'message_id' => $msg['message_id']
+                ]);
+            } 
+            // Warning time aa gaya?
+            elseif ($now >= $msg['warning_time'] && !$msg['warning_sent']) {
+                $this->sendWarning($msg['chat_id'], $msg['message_id']);
+                $msg['warning_sent'] = true;
+                $remaining_messages[] = $msg;
+            }
+            else {
+                $remaining_messages[] = $msg;
+            }
+        }
+        
+        if ($deleted_count > 0) {
+            $data['messages'] = $remaining_messages;
+            $data['stats']['last_cleanup'] = date('Y-m-d H:i:s');
+            $this->saveData($data);
+        }
+    }
+    
+    /**
+     * Warning message bhejo
+     */
+    private function sendWarning($chat_id, $message_id) {
+        $minutes = $this->timeout - $this->warning_before;
+        $warning = getHinglishResponse('auto_delete_warning', ['minutes' => $minutes]);
+        
+        // Warning as reply
+        $data = [
+            'chat_id' => $chat_id,
+            'text' => $warning,
+            'reply_to_message_id' => $message_id,
+            'parse_mode' => 'HTML'
+        ];
+        
+        apiRequest('sendMessage', $data);
+        log_error("Auto-delete warning sent", 'INFO', ['chat_id' => $chat_id, 'message_id' => $message_id]);
+    }
+    
+    /**
+     * Message delete karo
+     */
+    private function deleteMessage($chat_id, $message_id) {
+        return apiRequest('deleteMessage', [
+            'chat_id' => $chat_id,
+            'message_id' => $message_id
+        ]);
+    }
+    
+    /**
+     * Stats do
+     */
+    public function getStats() {
+        $data = $this->loadData();
+        $now = time();
+        
+        $pending = array_filter($data['messages'], function($msg) use ($now) {
+            return $msg['delete_at'] > $now;
+        });
+        
+        return [
+            'timeout' => $this->timeout,
+            'total_deleted' => $data['stats']['total_deleted'],
+            'pending_count' => count($pending),
+            'last_cleanup' => $data['stats']['last_cleanup']
+        ];
     }
 }
 
@@ -1148,7 +1583,7 @@ function sendChatAction($chat_id, $action = 'typing') {
 function sendMessage($chat_id, $text, $reply_markup = null, $parse_mode = null) {
     $data = [
         'chat_id' => $chat_id,
-        'text' => validateInput($text, 'text')
+        'text' => $text  // No validateInput to preserve HTML tags
     ];
     if ($reply_markup) $data['reply_markup'] = json_encode($reply_markup);
     if ($parse_mode) $data['parse_mode'] = $parse_mode;
@@ -1162,7 +1597,7 @@ function editMessageText($chat_id, $message_id, $text, $reply_markup = null, $pa
     $data = [
         'chat_id' => $chat_id,
         'message_id' => $message_id,
-        'text' => validateInput($text, 'text')
+        'text' => $text  // No validateInput to preserve HTML tags
     ];
     if ($reply_markup) $data['reply_markup'] = json_encode($reply_markup);
     if ($parse_mode) $data['parse_mode'] = $parse_mode;
@@ -1330,7 +1765,7 @@ function advanced_search($chat_id, $query, $user_id = null) {
     
     $q = validateInput($query, 'movie_name');
     if (!$q) {
-        sendMessage($chat_id, "❌ Invalid movie name format.", null, 'HTML');
+        sendHinglish($chat_id, 'error', ['message' => 'Invalid movie name format']);
         return;
     }
     
@@ -1340,7 +1775,7 @@ function advanced_search($chat_id, $query, $user_id = null) {
     
     // 1. Minimum length check
     if (strlen($q) < 2) {
-        sendMessage($chat_id, "❌ Please enter at least 2 characters for search", null, 'HTML');
+        sendHinglish($chat_id, 'error', ['message' => 'Please enter at least 2 characters for search']);
         return;
     }
     
@@ -1361,7 +1796,7 @@ function advanced_search($chat_id, $query, $user_id = null) {
     }
     
     if ($invalid_count > 0 && ($invalid_count / count($query_words)) > 0.5) {
-        sendMessage($chat_id, "🎬 Please enter a valid movie name!\n\nExamples:\n• kgf\n• pushpa\n• avengers\n\n📢 Join: @EntertainmentTadka786", null, 'HTML');
+        sendHinglish($chat_id, 'invalid_search');
         log_error("Invalid search query detected", 'WARNING', ['query' => $query]);
         return;
     }
@@ -1375,15 +1810,20 @@ function advanced_search($chat_id, $query, $user_id = null) {
             $total_items += $movie_data['count'];
         }
         
-        $msg = "🔍 Found " . count($found) . " movies for '$query' ($total_items items):\n\n";
+        $results_text = "";
         $i = 1;
         foreach ($found as $movie_name => $movie_data) {
-            $msg .= "$i. " . ucwords($movie_name) . " (" . $movie_data['count'] . " entries)\n";
+            $results_text .= "$i. " . ucwords($movie_name) . " (" . $movie_data['count'] . " entries)\n";
             $i++;
             if ($i > 10) break;
         }
         
-        sendMessage($chat_id, $msg, null, 'HTML');
+        sendHinglish($chat_id, 'search_found', [
+            'count' => count($found),
+            'query' => $query,
+            'total_items' => $total_items,
+            'results' => $results_text
+        ]);
         
         // Create inline keyboard with top 5 results
         $keyboard = ['inline_keyboard' => []];
@@ -1397,7 +1837,7 @@ function advanced_search($chat_id, $query, $user_id = null) {
             if ($count >= 5) break;
         }
         
-        sendMessage($chat_id, "🚀 Select a movie to get all copies:", $keyboard, 'HTML');
+        sendHinglish($chat_id, 'search_select', [], $keyboard);
         
         // Update user points if user_id provided
         if ($user_id) {
@@ -1407,12 +1847,12 @@ function advanced_search($chat_id, $query, $user_id = null) {
         log_error("Search successful, found " . count($found) . " movies", 'INFO');
     } else {
         // Not found message
-        $lang = detect_language($query);
-        $messages = [
-            'hindi' => "😔 Yeh movie abhi available nahi hai!\n\n📢 Join: @EntertainmentTadka786",
-            'english' => "😔 This movie isn't available yet!\n\n📢 Join: @EntertainmentTadka786"
-        ];
-        sendMessage($chat_id, $messages[$lang], null, 'HTML');
+        $lang = getUserLanguage($user_id);
+        if ($lang == 'hindi') {
+            sendHinglish($chat_id, 'search_not_found_hindi');
+        } else {
+            sendHinglish($chat_id, 'search_not_found');
+        }
         log_error("No results found for query", 'INFO', ['query' => $query]);
     }
     
@@ -1503,29 +1943,22 @@ function admin_stats($chat_id) {
     $users_data = json_decode(file_get_contents(USERS_FILE), true);
     $total_users = count($users_data['users'] ?? []);
     $request_stats = $requestSystem->getStats();
-    
-    $msg = "📊 Bot Statistics\n\n";
-    $msg .= "🎬 Total Movies: " . $stats['total_movies'] . "\n";
-    $msg .= "👥 Total Users: " . $total_users . "\n";
-    
-    // Get searches from stats file
     $file_stats = json_decode(file_get_contents(STATS_FILE), true);
-    $msg .= "🔍 Total Searches: " . ($file_stats['total_searches'] ?? 0) . "\n";
-    $msg .= "🕒 Last Updated: " . $stats['last_updated'] . "\n\n";
     
-    $msg .= "📡 Channels Distribution:\n";
+    $channels_text = "";
     foreach ($stats['channels'] as $channel_id => $count) {
         $channel_name = getChannelUsername($channel_id);
-        $msg .= "• " . $channel_name . ": " . $count . " movies\n";
+        $channels_text .= "• " . $channel_name . ": " . $count . " movies\n";
     }
     
-    $msg .= "\n📋 Request System Stats:\n";
-    $msg .= "• Total Requests: " . $request_stats['total_requests'] . "\n";
-    $msg .= "• Pending: " . $request_stats['pending'] . "\n";
-    $msg .= "• Approved: " . $request_stats['approved'] . "\n";
-    $msg .= "• Rejected: " . $request_stats['rejected'] . "\n";
+    sendHinglish($chat_id, 'stats', [
+        'movies' => $stats['total_movies'],
+        'users' => $total_users,
+        'searches' => $file_stats['total_searches'] ?? 0,
+        'updated' => $stats['last_updated'],
+        'channels' => $channels_text
+    ]);
     
-    sendMessage($chat_id, $msg, null, 'HTML');
     log_error("Admin stats sent to $chat_id", 'INFO');
 }
 
@@ -1537,19 +1970,20 @@ function csv_stats_command($chat_id) {
     $stats = $csvManager->getStats();
     $csv_size = file_exists(CSV_FILE) ? filesize(CSV_FILE) : 0;
     
-    $msg = "📊 CSV Database Statistics\n\n";
-    $msg .= "📁 File Size: " . round($csv_size / 1024, 2) . " KB\n";
-    $msg .= "📄 Total Movies: " . $stats['total_movies'] . "\n";
-    $msg .= "🕒 Last Cache Update: " . $stats['last_updated'] . "\n\n";
-    
-    $msg .= "📡 Movies by Channel:\n";
+    $channels_text = "";
     foreach ($stats['channels'] as $channel_id => $count) {
         $channel_type = getChannelType($channel_id);
         $type_icon = $channel_type === 'public' ? '🌐' : '🔒';
-        $msg .= $type_icon . " " . getChannelUsername($channel_id) . ": " . $count . "\n";
+        $channels_text .= $type_icon . " " . getChannelUsername($channel_id) . ": " . $count . "\n";
     }
     
-    sendMessage($chat_id, $msg, null, 'HTML');
+    sendHinglish($chat_id, 'csv_stats', [
+        'size' => round($csv_size / 1024, 2),
+        'movies' => $stats['total_movies'],
+        'updated' => $stats['last_updated'],
+        'channels' => $channels_text
+    ]);
+    
     log_error("CSV stats sent to $chat_id", 'INFO');
 }
 
@@ -1584,10 +2018,12 @@ function totalupload_controller($chat_id, $page = 1) {
     }
     
     // Send pagination message
-    $title = "📊 Total Uploads\n";
-    $title .= "• Page {$page}/{$total_pages}\n";
-    $title .= "• Showing: " . count($page_movies) . " of {$total}\n\n";
-    $title .= "➡️ Use buttons to navigate";
+    sendHinglish($chat_id, 'totalupload', [
+        'page' => $page,
+        'total_pages' => $total_pages,
+        'showing' => count($page_movies),
+        'total' => $total
+    ]);
     
     $keyboard = ['inline_keyboard' => []];
     $row = [];
@@ -1605,7 +2041,7 @@ function totalupload_controller($chat_id, $page = 1) {
         ['text' => '🛑 Stop', 'callback_data' => 'tu_stop']
     ];
     
-    sendMessage($chat_id, $title, $keyboard, 'HTML');
+    sendMessage($chat_id, "➡️ Buttons use karo navigate karne ke liye", $keyboard, 'HTML');
 }
 
 // ==================== LEGACY FUNCTIONS ====================
@@ -1696,10 +2132,7 @@ if (MAINTENANCE_MODE) {
     $update = json_decode(file_get_contents('php://input'), true);
     if (isset($update['message'])) {
         $chat_id = $update['message']['chat']['id'];
-        $maintenance_msg = "🛠️ <b>Bot Under Maintenance</b>\n\n";
-        $maintenance_msg .= "We're temporarily unavailable for updates.\n";
-        $maintenance_msg .= "Will be back in few days!\n\n";
-        $maintenance_msg .= "Thanks for patience 🙏";
+        $maintenance_msg = getHinglishResponse('maintenance');
         sendMessage($chat_id, $maintenance_msg, null, 'HTML');
     }
     exit;
@@ -1709,6 +2142,14 @@ if (MAINTENANCE_MODE) {
 // Initialize Managers
 $csvManager = CSVManager::getInstance();
 $requestSystem = RequestSystem::getInstance();
+$autoDelete = AutoDelete::getInstance();
+
+// Self-triggering cron (har minute check)
+static $last_cron = 0;
+if (time() - $last_cron >= 60) {
+    $autoDelete->checkAndDelete();
+    $last_cron = time();
+}
 
 // Check for webhook setup
 if (isset($_GET['setup'])) {
@@ -1759,6 +2200,9 @@ if (isset($_GET['test'])) {
     echo "<p><strong>Total Requests:</strong> " . $request_stats['total_requests'] . "</p>";
     echo "<p><strong>Pending Requests:</strong> " . $request_stats['pending'] . "</p>";
     
+    $auto_stats = $autoDelete->getStats();
+    echo "<p><strong>Auto-Delete Stats:</strong> Deleted: " . $auto_stats['total_deleted'] . ", Pending: " . $auto_stats['pending_count'] . "</p>";
+    
     echo "<h3>🚀 Quick Setup</h3>";
     echo "<p><a href='?setup=1'>Set Webhook Now</a></p>";
     echo "<p><a href='?deletehook=1'>Delete Webhook</a></p>";
@@ -1787,6 +2231,14 @@ if (isset($_GET['test_csv'])) {
     exit;
 }
 
+// Test HTML
+if (isset($_GET['test_html'])) {
+    $chat_id = 1080317415; // Apna chat ID daalo
+    sendMessage($chat_id, "<b>Bold Text</b> <i>Italic</i> <code>Code</code>", null, 'HTML');
+    echo "Test message sent! Check Telegram.";
+    exit;
+}
+
 // ==================== TELEGRAM UPDATE PROCESSING ====================
 // Get the incoming update from Telegram
 $update = json_decode(file_get_contents('php://input'), true);
@@ -1807,7 +2259,7 @@ if ($update) {
         $message_id = $message['message_id'];
         $chat_id = $message['chat']['id'];
         
-        log_error("Channel post received", 'INFO', [
+        log_error("Channel post received - NO DELETE", 'INFO', [
             'channel_id' => $chat_id,
             'message_id' => $message_id
         ]);
@@ -1858,6 +2310,7 @@ if ($update) {
         $message = $update['message'];
         $chat_id = $message['chat']['id'];
         $user_id = $message['from']['id'];
+        $message_id = $message['message_id'];
         $text = isset($message['text']) ? $message['text'] : '';
         $chat_type = $message['chat']['type'] ?? 'private';
         
@@ -1866,6 +2319,15 @@ if ($update) {
             'user_id' => $user_id,
             'text' => substr($text, 0, 100)
         ]);
+        
+        // Check if message is forwarded
+        $is_forward = isset($message['forward_from']) || isset($message['forward_from_chat']);
+        
+        // Check if message is command
+        $is_command = (strpos($text, '/') === 0);
+        
+        // 🔥 AUTO-DELETE REGISTER - DIRECT RULES APPLY
+        $autoDelete->registerMessage($chat_id, $message_id, $user_id, $is_forward, $is_command, $chat_type);
         
         // Update user data
         $users_data = json_decode(file_get_contents(USERS_FILE), true);
@@ -1878,7 +2340,8 @@ if ($update) {
                 'username' => $message['from']['username'] ?? '',
                 'joined' => date('Y-m-d H:i:s'),
                 'last_active' => date('Y-m-d H:i:s'),
-                'points' => 0
+                'points' => 0,
+                'language' => 'hinglish'
             ];
             $users_data['total_requests'] = ($users_data['total_requests'] ?? 0) + 1;
             file_put_contents(USERS_FILE, json_encode($users_data, JSON_PRETTY_PRINT));
@@ -1901,35 +2364,15 @@ if ($update) {
             log_error("Command received", 'INFO', ['command' => $command]);
             
             if ($command == '/start') {
-                $welcome = "🎬 <b>Welcome to Entertainment Tadka!</b>\n\n";
+                // Detect user language from their message
+                $lang = detectUserLanguage($text);
+                setUserLanguage($user_id, $lang);
                 
-                $welcome .= "📢 <b>How to use this bot:</b>\n";
-                $welcome .= "• Simply type any movie name\n";
-                $welcome .= "• Use English or Hindi\n";
-                $welcome .= "• Add 'theater' for theater prints\n";
-                $welcome .= "• Partial names also work\n\n";
-                
-                $welcome .= "🔍 <b>Examples:</b>\n";
-                $welcome .= "• Mandala Murders 2025\n";
-                $welcome .= "• Lokah Chapter 1 Chandra 2025\n";
-                $welcome .= "• Idli Kadai (2025)\n";
-                $welcome .= "• IT - Welcome to Derry (2025) S01\n";
-                $welcome .= "• hindi movie\n";
-                $welcome .= "• kgf\n\n";
-                
-                $welcome .= "📢 <b>Our Channels:</b>\n";
-                $welcome .= "🍿 Main: @EntertainmentTadka786\n";
-                $welcome .= "🎭 Theater: @threater_print_movies\n";
-                $welcome .= "📥 Requests: @EntertainmentTadka7860\n";
-                $welcome .= "🔒 Backup: @ETBackup\n\n";
-                
-                $welcome .= "🎬 <b>Movie Request System:</b>\n";
-                $welcome .= "• Use /request MovieName to request a movie\n";
-                $welcome .= "• Or type: 'pls add MovieName'\n";
-                $welcome .= "• Check status with /myrequests\n";
-                $welcome .= "• Max 3 requests per day\n\n";
-                
-                $welcome .= "💡 <b>Tip:</b> Use /help for all commands";
+                if ($lang == 'hindi') {
+                    $welcome = getHinglishResponse('welcome_hindi');
+                } else {
+                    $welcome = getHinglishResponse('welcome');
+                }
                 
                 $keyboard = [
                     'inline_keyboard' => [
@@ -1938,7 +2381,7 @@ if ($update) {
                             ['text' => '🎭 Theater Prints', 'url' => 'https://t.me/threater_print_movies']
                         ],
                         [
-                            ['text' => '📥 How to Request?', 'callback_data' => 'request_movie'],
+                            ['text' => '📥 Request Kaise Karein?', 'callback_data' => 'request_movie'],
                             ['text' => '🔒 Backup Channel', 'url' => 'https://t.me/ETBackup']
                         ],
                         [
@@ -1953,53 +2396,30 @@ if ($update) {
             }
             elseif ($command == '/help') {
                 sendChatAction($chat_id, 'typing');
-                $help = "🤖 <b>Entertainment Tadka Bot - Help</b>\n\n";
-                
-                $help .= "📋 <b>Available Commands:</b>\n";
-                $help .= "/start - Welcome message with channel links\n";
-                $help .= "/help - Show this help message\n";
-                $help .= "/request MovieName - Request a new movie\n";
-                $help .= "/myrequests - View your movie requests\n";
-                $help .= "/checkdate - Show date-wise statistics\n";
-                $help .= "/totalupload - Browse all movies with pagination\n";
-                $help .= "/testcsv - View all movies in database\n";
-                $help .= "/checkcsv - Check CSV data (add 'all' for full list)\n";
-                $help .= "/csvstats - CSV statistics\n";
-                
-                if (in_array($user_id, ADMIN_IDS)) {
-                    $help .= "/stats - Admin statistics\n";
-                    $help .= "/pendingrequests - View pending requests (Admin only)\n";
-                }
-                
-                $help .= "\n🔍 <b>How to Search:</b>\n";
-                $help .= "• Type any movie name (English/Hindi)\n";
-                $help .= "• Partial names work too\n";
-                $help .= "• Example: 'kgf', 'pushpa', 'hindi movie'\n\n";
-                
-                $help .= "🎬 <b>Movie Requests:</b>\n";
-                $help .= "• Use /request MovieName\n";
-                $help .= "• Or type: 'pls add MovieName'\n";
-                $help .= "• Max 3 requests per day per user\n";
-                $help .= "• Check status with /myrequests\n\n";
-                
-                $help .= "📢 <b>Channel Information:</b>\n";
-                $help .= "🍿 Main: @EntertainmentTadka786\n";
-                $help .= "🎭 Theater: @threater_print_movies\n";
-                $help .= "📥 Requests: @EntertainmentTadka7860\n";
-                $help .= "🔒 Backup: @ETBackup\n\n";
-                
-                $help .= "⚠️ <b>Note:</b> This bot works with webhook. If you face issues, contact admin.";
-                
+                $help = getHinglishResponse('help');
                 sendMessage($chat_id, $help, null, 'HTML');
+            }
+            elseif ($command == '/language' || $command == '/lang') {
+                $keyboard = [
+                    'inline_keyboard' => [
+                        [
+                            ['text' => '🇬🇧 English', 'callback_data' => 'lang_english'],
+                            ['text' => '🇮🇳 हिंदी', 'callback_data' => 'lang_hindi'],
+                            ['text' => '🎭 Hinglish', 'callback_data' => 'lang_hinglish']
+                        ]
+                    ]
+                ];
+                
+                sendHinglish($chat_id, 'language_choose', [], $keyboard);
             }
             elseif ($command == '/request') {
                 if (!REQUEST_SYSTEM_ENABLED) {
-                    sendMessage($chat_id, "❌ Request system is currently disabled.", null, 'HTML');
+                    sendHinglish($chat_id, 'error', ['message' => 'Request system currently disabled']);
                     return;
                 }
                 
                 if (!isset($parts[1])) {
-                    sendMessage($chat_id, "📝 Usage: /request Movie Name\nExample: /request KGF Chapter 3\n\nYou can also type: 'pls add MovieName'", null, 'HTML');
+                    sendHinglish($chat_id, 'request_guide', ['limit' => MAX_REQUESTS_PER_DAY]);
                     return;
                 }
                 
@@ -2007,11 +2427,25 @@ if ($update) {
                 $user_name = $message['from']['first_name'] . ($message['from']['last_name'] ? ' ' . $message['from']['last_name'] : '');
                 
                 $result = $requestSystem->submitRequest($user_id, $movie_name, $user_name);
-                sendMessage($chat_id, $result['message'], null, 'HTML');
+                
+                if ($result['success']) {
+                    sendHinglish($chat_id, 'request_success', [
+                        'movie' => $movie_name,
+                        'id' => $result['request_id']
+                    ]);
+                } else {
+                    if (strpos($result['message'], 'already requested') !== false) {
+                        sendHinglish($chat_id, 'request_duplicate');
+                    } elseif (strpos($result['message'], 'daily limit') !== false) {
+                        sendHinglish($chat_id, 'request_limit', ['limit' => MAX_REQUESTS_PER_DAY]);
+                    } else {
+                        sendMessage($chat_id, $result['message'], null, 'HTML');
+                    }
+                }
             }
             elseif ($command == '/myrequests') {
                 if (!REQUEST_SYSTEM_ENABLED) {
-                    sendMessage($chat_id, "❌ Request system is currently disabled.", null, 'HTML');
+                    sendHinglish($chat_id, 'error', ['message' => 'Request system currently disabled']);
                     return;
                 }
                 
@@ -2019,19 +2453,19 @@ if ($update) {
                 $user_stats = $requestSystem->getUserStats($user_id);
                 
                 if (empty($requests)) {
-                    sendMessage($chat_id, "📭 You haven't made any requests yet.\nUse /request MovieName to request a movie.\n\nOr type: 'pls add MovieName'", null, 'HTML');
+                    sendHinglish($chat_id, 'myrequests_empty');
                     return;
                 }
                 
-                $message = "📋 <b>Your Movie Requests</b>\n\n";
-                $message .= "📊 <b>Stats:</b>\n";
-                $message .= "• Total: " . $user_stats['total_requests'] . "\n";
-                $message .= "• Approved: " . $user_stats['approved'] . "\n";
-                $message .= "• Pending: " . $user_stats['pending'] . "\n";
-                $message .= "• Rejected: " . $user_stats['rejected'] . "\n";
-                $message .= "• Today: " . $user_stats['requests_today'] . "/" . MAX_REQUESTS_PER_DAY . "\n\n";
+                $message = getHinglishResponse('myrequests_header', [
+                    'total' => $user_stats['total_requests'],
+                    'approved' => $user_stats['approved'],
+                    'pending' => $user_stats['pending'],
+                    'rejected' => $user_stats['rejected'],
+                    'today' => $user_stats['requests_today'],
+                    'limit' => MAX_REQUESTS_PER_DAY
+                ]);
                 
-                $message .= "🎬 <b>Recent Requests:</b>\n";
                 $i = 1;
                 foreach ($requests as $req) {
                     $status_icon = $req['status'] == 'approved' ? '✅' : ($req['status'] == 'rejected' ? '❌' : '⏳');
@@ -2046,7 +2480,7 @@ if ($update) {
             }
             elseif ($command == '/pendingrequests' && in_array($user_id, ADMIN_IDS)) {
                 if (!REQUEST_SYSTEM_ENABLED) {
-                    sendMessage($chat_id, "❌ Request system is currently disabled.", null, 'HTML');
+                    sendHinglish($chat_id, 'error', ['message' => 'Request system currently disabled']);
                     return;
                 }
                 
@@ -2159,6 +2593,16 @@ if ($update) {
             elseif ($command == '/stats' && in_array($user_id, ADMIN_IDS)) {
                 admin_stats($chat_id);
             }
+            elseif ($command == '/autodelete' && in_array($user_id, ADMIN_IDS)) {
+                $stats = $autoDelete->getStats();
+                
+                sendHinglish($chat_id, 'auto_delete_stats', [
+                    'timeout' => $stats['timeout'],
+                    'total_deleted' => $stats['total_deleted'],
+                    'pending' => $stats['pending_count'],
+                    'last_cleanup' => $stats['last_cleanup']
+                ]);
+            }
         } 
         // Normal text request detection (pls add movie)
         elseif (!empty(trim($text)) && (
@@ -2170,7 +2614,7 @@ if ($update) {
         )) {
             
             if (!REQUEST_SYSTEM_ENABLED) {
-                sendMessage($chat_id, "❌ Request system is currently disabled.", null, 'HTML');
+                sendHinglish($chat_id, 'error', ['message' => 'Request system currently disabled']);
                 return;
             }
             
@@ -2200,13 +2644,27 @@ if ($update) {
             }
             
             if (strlen($movie_name) < 2) {
-                sendMessage($chat_id, "🎬 Please specify which movie you want to add.\nExample: 'Please add KGF Chapter 3' or use /request command", null, 'HTML');
+                sendHinglish($chat_id, 'request_guide', ['limit' => MAX_REQUESTS_PER_DAY]);
                 return;
             }
             
             $user_name = $message['from']['first_name'] . ($message['from']['last_name'] ? ' ' . $message['from']['last_name'] : '');
             $result = $requestSystem->submitRequest($user_id, $movie_name, $user_name);
-            sendMessage($chat_id, $result['message'], null, 'HTML');
+            
+            if ($result['success']) {
+                sendHinglish($chat_id, 'request_success', [
+                    'movie' => $movie_name,
+                    'id' => $result['request_id']
+                ]);
+            } else {
+                if (strpos($result['message'], 'already requested') !== false) {
+                    sendHinglish($chat_id, 'request_duplicate');
+                } elseif (strpos($result['message'], 'daily limit') !== false) {
+                    sendHinglish($chat_id, 'request_limit', ['limit' => MAX_REQUESTS_PER_DAY]);
+                } else {
+                    sendMessage($chat_id, $result['message'], null, 'HTML');
+                }
+            }
         }
         // Normal movie search
         elseif (!empty(trim($text))) {
@@ -2306,60 +2764,11 @@ if ($update) {
             answerCallbackQuery($query['id'], "Stopped");
         }
         elseif ($data === 'request_movie') {
-            $message_text = "📝 <b>Movie Request Guide</b>\n\n";
-            $message_text .= "🎬 <b>2 tarike hain movie request karne ke:</b>\n\n";
-            $message_text .= "1️⃣ <b>Command se:</b>\n";
-            $message_text .= "<code>/request Movie Name</code>\n";
-            $message_text .= "Example: /request KGF Chapter 3\n\n";
-            $message_text .= "2️⃣ <b>Natural Language se:</b>\n";
-            $message_text .= "• pls add Movie Name\n";
-            $message_text .= "• please add Movie Name\n";
-            $message_text .= "• can you add Movie Name\n";
-            $message_text .= "• request movie Movie Name\n\n";
-            $message_text .= "📌 <b>Limit:</b> " . MAX_REQUESTS_PER_DAY . " requests per day\n";
-            $message_text .= "⏳ <b>Status Check:</b> /myrequests\n\n";
-            $message_text .= "🔗 <b>Request Channel:</b> @EntertainmentTadka7860";
-            
-            sendMessage($chat_id, $message_text, null, 'HTML');
+            sendHinglish($chat_id, 'request_guide', ['limit' => MAX_REQUESTS_PER_DAY]);
             answerCallbackQuery($query['id'], "📝 Request guide opened");
         }
         elseif ($data === 'help_command') {
-            $help_text = "🤖 <b>Entertainment Tadka Bot - Help</b>\n\n";
-            
-            $help_text .= "📋 <b>Available Commands:</b>\n";
-            $help_text .= "/start - Welcome message with channel links\n";
-            $help_text .= "/help - Show this help message\n";
-            $help_text .= "/request MovieName - Request a new movie\n";
-            $help_text .= "/myrequests - View your movie requests\n";
-            $help_text .= "/checkdate - Show date-wise statistics\n";
-            $help_text .= "/totalupload - Browse all movies with pagination\n";
-            $help_text .= "/testcsv - View all movies in database\n";
-            $help_text .= "/checkcsv - Check CSV data (add 'all' for full list)\n";
-            $help_text .= "/csvstats - CSV statistics\n";
-            
-            if (in_array($user_id, ADMIN_IDS)) {
-                $help_text .= "/stats - Admin statistics\n";
-                $help_text .= "/pendingrequests - View pending requests (Admin only)\n";
-            }
-            
-            $help_text .= "\n🔍 <b>How to Search:</b>\n";
-            $help_text .= "• Type any movie name (English/Hindi)\n";
-            $help_text .= "• Partial names work too\n";
-            $help_text .= "• Example: 'kgf', 'pushpa', 'hindi movie'\n\n";
-            
-            $help_text .= "🎬 <b>Movie Requests:</b>\n";
-            $help_text .= "• Use /request MovieName\n";
-            $help_text .= "• Or type: 'pls add MovieName'\n";
-            $help_text .= "• Max 3 requests per day per user\n";
-            $help_text .= "• Check status with /myrequests\n\n";
-            
-            $help_text .= "📢 <b>Channel Information:</b>\n";
-            $help_text .= "🍿 Main: @EntertainmentTadka786\n";
-            $help_text .= "🎭 Theater: @threater_print_movies\n";
-            $help_text .= "📥 Requests: @EntertainmentTadka7860\n";
-            $help_text .= "🔒 Backup: @ETBackup\n\n";
-            
-            $help_text .= "⚠️ <b>Note:</b> This bot works with webhook. If you face issues, contact admin.";
+            $help_text = getHinglishResponse('help');
             
             $keyboard = [
                 'inline_keyboard' => [
@@ -2373,35 +2782,13 @@ if ($update) {
             answerCallbackQuery($query['id'], "Help information loaded");
         }
         elseif ($data === 'back_to_start') {
-            $welcome = "🎬 <b>Welcome to Entertainment Tadka!</b>\n\n";
+            $lang = getUserLanguage($user_id);
             
-            $welcome .= "📢 <b>How to use this bot:</b>\n";
-            $welcome .= "• Simply type any movie name\n";
-            $welcome .= "• Use English or Hindi\n";
-            $welcome .= "• Add 'theater' for theater prints\n";
-            $welcome .= "• Partial names also work\n\n";
-            
-            $welcome .= "🔍 <b>Examples:</b>\n";
-            $welcome .= "• Mandala Murders 2025\n";
-            $welcome .= "• Lokah Chapter 1 Chandra 2025\n";
-            $welcome .= "• Idli Kadai (2025)\n";
-            $welcome .= "• IT - Welcome to Derry (2025) S01\n";
-            $welcome .= "• hindi movie\n";
-            $welcome .= "• kgf\n\n";
-            
-            $welcome .= "📢 <b>Our Channels:</b>\n";
-            $welcome .= "🍿 Main: @EntertainmentTadka786\n";
-            $welcome .= "🎭 Theater: @threater_print_movies\n";
-            $welcome .= "📥 Requests: @EntertainmentTadka7860\n";
-            $welcome .= "🔒 Backup: @ETBackup\n\n";
-            
-            $welcome .= "🎬 <b>Movie Request System:</b>\n";
-            $welcome .= "• Use /request MovieName to request a movie\n";
-            $welcome .= "• Or type: 'pls add MovieName'\n";
-            $welcome .= "• Check status with /myrequests\n";
-            $welcome .= "• Max 3 requests per day\n\n";
-            
-            $welcome .= "💡 <b>Tip:</b> Use /help for all commands";
+            if ($lang == 'hindi') {
+                $welcome = getHinglishResponse('welcome_hindi');
+            } else {
+                $welcome = getHinglishResponse('welcome');
+            }
             
             $keyboard = [
                 'inline_keyboard' => [
@@ -2410,7 +2797,7 @@ if ($update) {
                         ['text' => '🎭 Theater Prints', 'url' => 'https://t.me/threater_print_movies']
                     ],
                     [
-                        ['text' => '📥 How to Request?', 'callback_data' => 'request_movie'],
+                        ['text' => '📥 Request Kaise Karein?', 'callback_data' => 'request_movie'],
                         ['text' => '🔒 Backup Channel', 'url' => 'https://t.me/ETBackup']
                     ],
                     [
@@ -2427,22 +2814,23 @@ if ($update) {
             $stats = $csvManager->getStats();
             $users_data = json_decode(file_get_contents(USERS_FILE), true);
             $total_users = count($users_data['users'] ?? []);
-            
-            $stats_text = "📊 <b>Bot Statistics</b>\n\n";
-            $stats_text .= "🎬 <b>Total Movies:</b> " . $stats['total_movies'] . "\n";
-            $stats_text .= "👥 <b>Total Users:</b> " . $total_users . "\n";
-            
             $file_stats = json_decode(file_get_contents(STATS_FILE), true);
-            $stats_text .= "🔍 <b>Total Searches:</b> " . ($file_stats['total_searches'] ?? 0) . "\n";
-            $stats_text .= "🕒 <b>Last Updated:</b> " . $stats['last_updated'] . "\n\n";
             
-            $stats_text .= "📡 <b>Movies by Channel:</b>\n";
+            $channels_text = "";
             foreach ($stats['channels'] as $channel_id => $count) {
                 $channel_name = getChannelUsername($channel_id);
                 $channel_type = getChannelType($channel_id);
                 $type_icon = $channel_type === 'public' ? '🌐' : '🔒';
-                $stats_text .= $type_icon . " " . $channel_name . ": " . $count . " movies\n";
+                $channels_text .= $type_icon . " " . $channel_name . ": " . $count . " movies\n";
             }
+            
+            $stats_text = getHinglishResponse('stats', [
+                'movies' => $stats['total_movies'],
+                'users' => $total_users,
+                'searches' => $file_stats['total_searches'] ?? 0,
+                'updated' => $stats['last_updated'],
+                'channels' => $channels_text
+            ]);
             
             $keyboard = [
                 'inline_keyboard' => [
@@ -2455,6 +2843,19 @@ if ($update) {
             
             editMessageText($chat_id, $message['message_id'], $stats_text, $keyboard, 'HTML');
             answerCallbackQuery($query['id'], "Statistics updated");
+        }
+        elseif (strpos($data, 'lang_') === 0) {
+            $lang = str_replace('lang_', '', $data);
+            setUserLanguage($user_id, $lang);
+            
+            $messages = [
+                'english' => getHinglishResponse('language_english'),
+                'hindi' => getHinglishResponse('language_hindi'),
+                'hinglish' => getHinglishResponse('language_hinglish')
+            ];
+            
+            editMessageText($chat_id, $message['message_id'], "✅ " . $messages[$lang], null, 'HTML');
+            answerCallbackQuery($query['id'], $messages[$lang]);
         }
         elseif (strpos($data, 'approve_') === 0) {
             if (!in_array($user_id, ADMIN_IDS)) {
@@ -2967,12 +3368,14 @@ header('Content-Type: text/html; charset=utf-8');
 </head>
 <body>
     <div class="container">
-        <h1>🎬 Entertainment Tadka Bot <span class="security-badge">SECURE v2.0</span></h1>
+        <h1>🎬 Entertainment Tadka Bot <span class="security-badge">SECURE v3.0</span></h1>
         
         <div class="status-card">
             <h2>✅ Bot is Running</h2>
             <p>Telegram Bot for movie searches across multiple channels | Hosted on Render.com</p>
             <p><strong>Movie Request System:</strong> ✅ Active</p>
+            <p><strong>Auto-Delete Feature:</strong> ✅ Active (30 min)</p>
+            <p><strong>Hinglish Support:</strong> ✅ Active</p>
             <p><strong>Security Level:</strong> 🔒 High</p>
         </div>
         
@@ -3000,11 +3403,13 @@ header('Content-Type: text/html; charset=utf-8');
                 <?php
                 $csvManager = CSVManager::getInstance();
                 $requestSystem = RequestSystem::getInstance();
+                $autoDelete = AutoDelete::getInstance();
                 
                 $stats = $csvManager->getStats();
                 $users_data = json_decode(@file_get_contents(USERS_FILE), true);
                 $total_users = count($users_data['users'] ?? []);
                 $request_stats = $requestSystem->getStats();
+                $auto_stats = $autoDelete->getStats();
                 ?>
                 <div class="stat-item">
                     <div>🎬 Total Movies</div>
@@ -3021,6 +3426,10 @@ header('Content-Type: text/html; charset=utf-8');
                 <div class="stat-item">
                     <div>⏳ Pending</div>
                     <div class="stat-value"><?php echo $request_stats['pending']; ?></div>
+                </div>
+                <div class="stat-item">
+                    <div>🗑️ Auto-Deleted</div>
+                    <div class="stat-value"><?php echo $auto_stats['total_deleted']; ?></div>
                 </div>
             </div>
         </div>
@@ -3064,11 +3473,14 @@ header('Content-Type: text/html; charset=utf-8');
             <div class="feature-item">✅ Admin statistics and monitoring dashboard</div>
             <div class="feature-item">✅ Pagination for browsing all movies</div>
             <div class="feature-item">✅ Automatic channel post tracking and indexing</div>
-            <div class="feature-item">✅ <strong>NEW:</strong> Rate limiting & DoS protection</div>
-            <div class="feature-item">✅ <strong>NEW:</strong> Input validation & XSS protection</div>
-            <div class="feature-item">✅ <strong>NEW:</strong> File locking for safe concurrent access</div>
-            <div class="feature-item">✅ <strong>NEW:</strong> Environment variable configuration</div>
-            <div class="feature-item">✅ <strong>NEW:</strong> Interactive Request Guide with Hindi/English instructions</div>
+            <div class="feature-item">✅ <strong>NEW:</strong> Auto-Delete Feature (30 min)</div>
+            <div class="feature-item">✅ <strong>NEW:</strong> Hinglish Language Support</div>
+            <div class="feature-item">✅ <strong>NEW:</strong> Language Detection (Hindi/English/Hinglish)</div>
+            <div class="feature-item">✅ Rate limiting & DoS protection</div>
+            <div class="feature-item">✅ Input validation & XSS protection</div>
+            <div class="feature-item">✅ File locking for safe concurrent access</div>
+            <div class="feature-item">✅ Environment variable configuration</div>
+            <div class="feature-item">✅ Interactive Request Guide with Hindi/English instructions</div>
         </div>
         
         <div style="margin-top: 40px; padding: 25px; background: rgba(255, 255, 255, 0.15); border-radius: 15px;">
@@ -3080,20 +3492,25 @@ header('Content-Type: text/html; charset=utf-8');
                 <li style="margin-bottom: 10px;">Start searching movies in Telegram bot</li>
                 <li style="margin-bottom: 10px;">Use /request or type "pls add MovieName" to request movies</li>
                 <li style="margin-bottom: 10px;">Check status with /myrequests command</li>
-                <li style="margin-bottom: 10px;">Click "📥 How to Request?" button for step-by-step guide</li>
+                <li style="margin-bottom: 10px;">Click "📥 Request Kaise Karein?" button for step-by-step guide</li>
+                <li style="margin-bottom: 10px;">Use /language to change language</li>
                 <li style="margin-bottom: 10px;">Admins: Use /pendingrequests to moderate requests</li>
+                <li style="margin-bottom: 10px;">Auto-Delete: Messages delete after 30 min (commands/admin safe)</li>
             </ol>
         </div>
         
         <footer>
             <p>🎬 Entertainment Tadka Bot | Powered by PHP & Telegram Bot API | Hosted on Render.com</p>
-            <p style="margin-top: 10px; font-size: 0.9em;">© <?php echo date('Y'); ?> - All rights reserved | Secure Version 2.0 | Request Guide Added | HTML Parse Fixed</p>
+            <p style="margin-top: 10px; font-size: 0.9em;">© <?php echo date('Y'); ?> - All rights reserved | Secure Version 3.0 | Auto-Delete + Hinglish Added | HTML Parse Fixed</p>
         </footer>
     </div>
 </body>
 </html>
 <?php
 // ==================== END OF FILE ====================
-// Exact line count: 3152 lines (including this comment)
+// Exact line count: 3350+ lines
+// Features: Movie Search, Request System, Admin Panel, Auto-Delete, Hinglish Support
 // HTML parse mode fixed in all sendMessage() and editMessageText() calls
+// Auto-Delete: 30 min timeout, 5 min warning, commands/admin/channel safe
+// Hinglish: Automatic language detection + responses
 ?>
