@@ -1,4 +1,4 @@
-# ==================== Dockerfile ====================
+# ==================== Dockerfile (FIXED) ====================
 # Entertainment Tadka Bot v5.0
 # Date: 2026-03-05
 
@@ -59,10 +59,16 @@ RUN mkdir -p cache backups logs \
     && chmod 644 *.php \
     && chmod 644 *.json *.csv 2>/dev/null || true
 
-# ==================== ENVIRONMENT CONFIGURATION ====================
-# Copy .env.example to .env (will be overridden by docker-compose or kubernetes secrets)
-COPY .env.example .env
-RUN chmod 600 .env
+# ==================== FIX: Check if .env.example exists ====================
+RUN if [ -f .env.example ]; then \
+        cp .env.example .env; \
+        chmod 600 .env; \
+        echo "✅ .env file created from .env.example"; \
+    else \
+        echo "⚠️ .env.example not found, creating empty .env"; \
+        touch .env; \
+        chmod 600 .env; \
+    fi
 
 # ==================== CRON SETUP ====================
 # Add cron job for backup
