@@ -1,55 +1,30 @@
-# ==================== render.yaml ====================
-# Entertainment Tadka Bot v5.0
-# Deploy on Render.com
-# Date: 2026-03-05
+# ==================== render.yaml (FIXED) ====================
 
 services:
-  # Web Service for Bot
   - type: web
     name: entertainment-tadka-bot
-    runtime: php
-    repo: https://github.com/yourusername/entertainment-bot # Replace with your repo
+    runtime: docker
+    repo: https://github.com/yourusername/entertainment-bot
     branch: main
-    buildCommand: |
-      # Install dependencies
-      apt-get update && apt-get install -y zip unzip
-      docker-php-ext-install zip mysqli pdo_mysql
-      
-      # Set permissions
-      chmod -R 755 .
-      mkdir -p cache backups logs
-      chmod 777 cache backups logs
-      
-      # Create .env from environment variables
-      php -r "file_put_contents('.env', 'BOT_TOKEN=' . getenv('BOT_TOKEN') . '\n' .
-                                      'BOT_USERNAME=' . getenv('BOT_USERNAME') . '\n' .
-                                      'BOT_ID=' . getenv('BOT_ID') . '\n' .
-                                      'ADMIN_IDS=' . getenv('ADMIN_IDS') . '\n' .
-                                      'API_ID=' . getenv('API_ID') . '\n' .
-                                      'API_HASH=' . getenv('API_HASH') . '\n' .
-                                      'PUBLIC_CHANNEL_1_ID=' . getenv('PUBLIC_CHANNEL_1_ID') . '\n' .
-                                      'PUBLIC_CHANNEL_1_USERNAME=' . getenv('PUBLIC_CHANNEL_1_USERNAME') . '\n' .
-                                      'PUBLIC_CHANNEL_2_ID=' . getenv('PUBLIC_CHANNEL_2_ID') . '\n' .
-                                      'PUBLIC_CHANNEL_2_USERNAME=' . getenv('PUBLIC_CHANNEL_2_USERNAME') . '\n' .
-                                      'PUBLIC_CHANNEL_3_ID=' . getenv('PUBLIC_CHANNEL_3_ID') . '\n' .
-                                      'PUBLIC_CHANNEL_3_USERNAME=' . getenv('PUBLIC_CHANNEL_3_USERNAME') . '\n' .
-                                      'PUBLIC_CHANNEL_4_ID=' . getenv('PUBLIC_CHANNEL_4_ID') . '\n' .
-                                      'PUBLIC_CHANNEL_4_USERNAME=' . getenv('PUBLIC_CHANNEL_4_USERNAME') . '\n' .
-                                      'PRIVATE_CHANNEL_1_ID=' . getenv('PRIVATE_CHANNEL_1_ID') . '\n' .
-                                      'PRIVATE_CHANNEL_2_ID=' . getenv('PRIVATE_CHANNEL_2_ID') . '\n' .
-                                      'REQUEST_GROUP_ID=' . getenv('REQUEST_GROUP_ID') . '\n' .
-                                      'REQUEST_GROUP_USERNAME=' . getenv('REQUEST_GROUP_USERNAME'));"
-    startCommand: |
-      # Set webhook on startup
-      php -r "require 'New-MNA-Bot.php'; echo 'Bot started';"
-      
-      # Start Apache
-      apache2-foreground
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    
+    # 🔥 CRITICAL FIX - Explicit port binding
+    ports:
+      - port: 80
+        protocol: HTTP
+      - port: 443
+        protocol: HTTPS
+    
+    # 🔥 Health check with proper endpoint
+    healthCheckPath: /New-MNA-Bot.php?test
+    healthCheckTimeout: 10
+    
     envVars:
       - key: ENVIRONMENT
         value: production
       - key: BOT_TOKEN
-        sync: false  # Set manually in Render dashboard
+        sync: false
       - key: BOT_USERNAME
         value: EntertainmentTadkaBot
       - key: BOT_ID
@@ -84,40 +59,9 @@ services:
         value: -1003083386043
       - key: REQUEST_GROUP_USERNAME
         value: "@EntertainmentTadka7860"
-    healthCheckPath: /New-MNA-Bot.php?test
-    autoDeploy: true
+    
+    # 🔥 Disk mount for persistence
     disk:
       name: bot-data
       mountPath: /var/www/html
       sizeGB: 5
-
-  # Background Worker for Cron Jobs
-  - type: cron
-    name: entertainment-bot-worker
-    runtime: php
-    schedule: "*/30 * * * *"  # Every 30 minutes
-    buildCommand: echo "Worker ready"
-    startCommand: |
-      php -r "
-        require 'New-MNA-Bot.php';
-        \$scanner = ChannelScanner::getInstance();
-        \$scanner->autoScanAll();
-        echo 'Scan completed at ' . date('Y-m-d H:i:s') . '\n';
-      "
-    envVars:
-      - fromService:
-          name: entertainment-tadka-bot
-          type: web
-          envVarKey: ENVIRONMENT
-    disk:
-      name: bot-data
-      mountPath: /var/www/html
-      sizeGB: 1
-
-# ==================== DATABASES ====================
-databases:
-  - name: entertainment-bot-db
-    databaseName: entertainment_bot
-    user: bot_user
-    plan: free
-    ipAllowList: []  # Allow all IPs
