@@ -53,7 +53,7 @@ log_error("=== BOT STARTED ===", 'INFO');
 // ==================== COMPLETE CONFIGURATION ====================
 $ENV_CONFIG = [
     // 🤖 BOT DETAILS
-    'BOT_TOKEN' => '8315381064:AAF9qL9vL9vL9vL9vL9vL9vL9vL9vL9vL9v', // Replace with actual token
+    'BOT_TOKEN' => '8315381064:AAGk0FGVGmB8j5SjpBvW3rD3_kQHe_hyOWU', // Replace with actual token
     'BOT_USERNAME' => '@EntertainmentTadkaBot',
     'BOT_ID' => 8315381064,
     
