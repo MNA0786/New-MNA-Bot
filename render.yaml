@@ -1,45 +1,123 @@
+# ==================== render.yaml ====================
+# Entertainment Tadka Bot v5.0
+# Deploy on Render.com
+# Date: 2026-03-05
+
 services:
+  # Web Service for Bot
   - type: web
     name: entertainment-tadka-bot
-    env: docker
-    dockerfilePath: ./Dockerfile
+    runtime: php
+    repo: https://github.com/yourusername/entertainment-bot # Replace with your repo
+    branch: main
+    buildCommand: |
+      # Install dependencies
+      apt-get update && apt-get install -y zip unzip
+      docker-php-ext-install zip mysqli pdo_mysql
+      
+      # Set permissions
+      chmod -R 755 .
+      mkdir -p cache backups logs
+      chmod 777 cache backups logs
+      
+      # Create .env from environment variables
+      php -r "file_put_contents('.env', 'BOT_TOKEN=' . getenv('BOT_TOKEN') . '\n' .
+                                      'BOT_USERNAME=' . getenv('BOT_USERNAME') . '\n' .
+                                      'BOT_ID=' . getenv('BOT_ID') . '\n' .
+                                      'ADMIN_IDS=' . getenv('ADMIN_IDS') . '\n' .
+                                      'API_ID=' . getenv('API_ID') . '\n' .
+                                      'API_HASH=' . getenv('API_HASH') . '\n' .
+                                      'PUBLIC_CHANNEL_1_ID=' . getenv('PUBLIC_CHANNEL_1_ID') . '\n' .
+                                      'PUBLIC_CHANNEL_1_USERNAME=' . getenv('PUBLIC_CHANNEL_1_USERNAME') . '\n' .
+                                      'PUBLIC_CHANNEL_2_ID=' . getenv('PUBLIC_CHANNEL_2_ID') . '\n' .
+                                      'PUBLIC_CHANNEL_2_USERNAME=' . getenv('PUBLIC_CHANNEL_2_USERNAME') . '\n' .
+                                      'PUBLIC_CHANNEL_3_ID=' . getenv('PUBLIC_CHANNEL_3_ID') . '\n' .
+                                      'PUBLIC_CHANNEL_3_USERNAME=' . getenv('PUBLIC_CHANNEL_3_USERNAME') . '\n' .
+                                      'PUBLIC_CHANNEL_4_ID=' . getenv('PUBLIC_CHANNEL_4_ID') . '\n' .
+                                      'PUBLIC_CHANNEL_4_USERNAME=' . getenv('PUBLIC_CHANNEL_4_USERNAME') . '\n' .
+                                      'PRIVATE_CHANNEL_1_ID=' . getenv('PRIVATE_CHANNEL_1_ID') . '\n' .
+                                      'PRIVATE_CHANNEL_2_ID=' . getenv('PRIVATE_CHANNEL_2_ID') . '\n' .
+                                      'REQUEST_GROUP_ID=' . getenv('REQUEST_GROUP_ID') . '\n' .
+                                      'REQUEST_GROUP_USERNAME=' . getenv('REQUEST_GROUP_USERNAME'));"
+    startCommand: |
+      # Set webhook on startup
+      php -r "require 'New-MNA-Bot.php'; echo 'Bot started';"
+      
+      # Start Apache
+      apache2-foreground
     envVars:
       - key: ENVIRONMENT
         value: production
       - key: BOT_TOKEN
-        sync: false
+        sync: false  # Set manually in Render dashboard
       - key: BOT_USERNAME
         value: EntertainmentTadkaBot
-      - key: ADMIN_ID
+      - key: BOT_ID
+        value: 8315381064
+      - key: ADMIN_IDS
         value: 1080317415
+      - key: API_ID
+        sync: false
+      - key: API_HASH
+        sync: false
       - key: PUBLIC_CHANNEL_1_ID
         value: -1003181705395
       - key: PUBLIC_CHANNEL_1_USERNAME
-        value: '@EntertainmentTadka786'
+        value: "@EntertainmentTadka786"
       - key: PUBLIC_CHANNEL_2_ID
-        value: -1002831605258
+        value: -1003614546520
       - key: PUBLIC_CHANNEL_2_USERNAME
-        value: '@threater_print_movies'
+        value: "@Entertainment_Tadka_Serial_786"
       - key: PUBLIC_CHANNEL_3_ID
-        value: -1002964109368
+        value: -1002831605258
       - key: PUBLIC_CHANNEL_3_USERNAME
-        value: '@ETBackup'
+        value: "@threater_print_movies"
+      - key: PUBLIC_CHANNEL_4_ID
+        value: -1002964109368
+      - key: PUBLIC_CHANNEL_4_USERNAME
+        value: "@ETBackup"
       - key: PRIVATE_CHANNEL_1_ID
         value: -1003251791991
       - key: PRIVATE_CHANNEL_2_ID
         value: -1002337293281
-      - key: PRIVATE_CHANNEL_3_ID
-        value: -1003614546520
       - key: REQUEST_GROUP_ID
         value: -1003083386043
       - key: REQUEST_GROUP_USERNAME
-        value: '@EntertainmentTadka7860'
-      - key: API_ID
-        value: 21944581
-      - key: API_HASH
-        value: 7b1c174a5cd3466e25a976c39a791737
-    healthCheckPath: /
+        value: "@EntertainmentTadka7860"
+    healthCheckPath: /New-MNA-Bot.php?test
     autoDeploy: true
+    disk:
+      name: bot-data
+      mountPath: /var/www/html
+      sizeGB: 5
+
+  # Background Worker for Cron Jobs
+  - type: cron
+    name: entertainment-bot-worker
+    runtime: php
+    schedule: "*/30 * * * *"  # Every 30 minutes
+    buildCommand: echo "Worker ready"
+    startCommand: |
+      php -r "
+        require 'New-MNA-Bot.php';
+        \$scanner = ChannelScanner::getInstance();
+        \$scanner->autoScanAll();
+        echo 'Scan completed at ' . date('Y-m-d H:i:s') . '\n';
+      "
+    envVars:
+      - fromService:
+          name: entertainment-tadka-bot
+          type: web
+          envVarKey: ENVIRONMENT
+    disk:
+      name: bot-data
+      mountPath: /var/www/html
+      sizeGB: 1
+
+# ==================== DATABASES ====================
+databases:
+  - name: entertainment-bot-db
+    databaseName: entertainment_bot
+    user: bot_user
     plan: free
-    domains:
-      - entertainment-tadka-bot.onrender.com
+    ipAllowList: []  # Allow all IPs

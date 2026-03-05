@@ -1,0 +1,62 @@
+; ==================== php.ini ====================
+; Custom PHP configuration for Entertainment Tadka Bot
+
+[PHP]
+; Memory and execution limits
+memory_limit = 256M
+max_execution_time = 300
+max_input_time = 300
+max_input_vars = 5000
+
+; File uploads
+file_uploads = On
+upload_max_filesize = 50M
+post_max_size = 50M
+max_file_uploads = 20
+
+; Error handling
+display_errors = Off
+display_startup_errors = Off
+log_errors = On
+error_log = /var/www/html/logs/php_errors.log
+error_reporting = E_ALL & ~E_DEPRECATED & ~E_STRICT
+
+; Timezone
+date.timezone = Asia/Kolkata
+
+; Session
+session.gc_maxlifetime = 86400
+session.cookie_lifetime = 0
+session.save_path = /var/www/html/cache/sessions
+
+; Output buffering
+output_buffering = 4096
+implicit_flush = Off
+
+; CURL
+curl.cainfo = /etc/ssl/certs/ca-certificates.crt
+
+; OpenSSL
+openssl.cafile = /etc/ssl/certs/ca-certificates.crt
+
+; Extensions
+extension=curl
+extension=gd
+extension=json
+extension=mbstring
+extension=mysqli
+extension=pdo_mysql
+extension=zip
+extension=exif
+
+[Date]
+date.timezone = Asia/Kolkata
+
+[Session]
+session.save_handler = files
+session.save_path = /var/www/html/cache/sessions
+
+[mail function]
+SMTP = localhost
+smtp_port = 25
+sendmail_from = bot@entertainment-tadka.com

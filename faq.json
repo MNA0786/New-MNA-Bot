@@ -1,0 +1,42 @@
+{
+    "download": {
+        "q": ["download", "kaise download", "how to get", "download kaise", "how to download"],
+        "a": "📥 <b>How to Download:</b>\n\n1. Search movie name\n2. Select from results\n3. Bot forwards the file\n4. Click on file to download\n\n❗ <b>Note:</b> Private channel files are copied, public are forwarded."
+    },
+    "request": {
+        "q": ["request", "add movie", "pls add", "please add", "movie add", "add film"],
+        "a": "📝 <b>Movie Request:</b>\n\n• /request MovieName\n• OR type 'pls add MovieName'\n• Max 3/day\n• Check /myrequests for status"
+    },
+    "channel": {
+        "q": ["channel", "join", "backup", "main channel", "group", "channels"],
+        "a": "📢 <b>Our Channels:</b>\n\n🍿 Main: @EntertainmentTadka786\n🎭 Serial: @Entertainment_Tadka_Serial_786\n🎬 Theater: @threater_print_movies\n🔒 Backup: @ETBackup\n📥 Requests: @EntertainmentTadka7860"
+    },
+    "language": {
+        "q": ["language", "hindi", "english", "bhasha", "lang", "hinglish"],
+        "a": "🌐 <b>Language Support:</b>\n\n• Hindi\n• English\n• Hinglish\n\nUse /language to change your preferred language."
+    },
+    "notfound": {
+        "q": ["not found", "nahi mila", "missing", "not available", "no results"],
+        "a": "😔 <b>Movie not found?</b>\n\n• Try different spelling\n• Use /request to request it\n• Check channels manually\n• Wait 24 hours for request approval"
+    },
+    "quality": {
+        "q": ["quality", "1080p", "720p", "4k", "hd", "resolution", "print"],
+        "a": "🎬 <b>Qualities Available:</b>\n\n• 1080p (Full HD)\n• 720p (HD)\n• 480p (SD)\n• 4K (Ultra HD)\n\nSearch with quality: 'Movie Name 1080p'"
+    },
+    "help": {
+        "q": ["help", "command", "kaam", "use", "how to use"],
+        "a": "🤖 <b>Bot Commands:</b>\n\n/start - Welcome\n/help - This help\n/request - Request movie\n/myrequests - Your requests\n/stats - Bot stats\n/totalupload - Browse all\n/language - Change language\n/subscribe - Get notifications"
+    },
+    "subscribe": {
+        "q": ["subscribe", "notification", "alert", "update"],
+        "a": "🔔 <b>Notifications:</b>\n\n• /subscribe - Get alerts\n• /unsubscribe - Stop alerts\n\nYou'll get notified about:\n• New movies\n• Request updates\n• Announcements"
+    },
+    "vip": {
+        "q": ["vip", "premium", "special", "extra"],
+        "a": "👑 <b>VIP System:</b>\n\nVIP users get:\n• Double request limit\n• Priority support\n• Early access\n\nContact admin for VIP status."
+    },
+    "stats": {
+        "q": ["stats", "statistics", "count", "kitni"],
+        "a": "📊 <b>Bot Statistics:</b>\n\nUse /stats to see:\n• Total movies\n• Total users\n• Total searches\n• Pending requests"
+    }
+}

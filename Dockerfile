@@ -1,57 +1,86 @@
+# ==================== Dockerfile ====================
+# Entertainment Tadka Bot v5.0
+# Date: 2026-03-05
+
 # Use official PHP image with Apache
-FROM php:8.1-apache
+FROM php:8.2-apache
 
-# Set working directory
-WORKDIR /var/www/html
+# ==================== LABELS ====================
+LABEL maintainer="Entertainment Tadka"
+LABEL version="5.0"
+LABEL description="Telegram Bot for Movie Search with Auto Channel Scanner"
 
-# Install system dependencies
+# ==================== ENVIRONMENT VARIABLES ====================
+ENV ENVIRONMENT=production
+ENV BOT_TOKEN=""
+ENV BOT_USERNAME=""
+ENV BOT_ID=""
+ENV ADMIN_IDS=""
+ENV API_ID=""
+ENV API_HASH=""
+
+# ==================== SYSTEM DEPENDENCIES ====================
 RUN apt-get update && apt-get install -y \
     git \
     curl \
-    libpng-dev \
-    libonig-dev \
-    libxml2-dev \
     zip \
     unzip \
     libzip-dev \
-    && docker-php-ext-install mbstring \
-    && docker-php-ext-install gd \
-    && docker-php-ext-install pdo_mysql \
-    && docker-php-ext-install mysqli \
-    && docker-php-ext-install bcmath \
-    && docker-php-ext-install zip \
-    && docker-php-ext-install session
+    libpng-dev \
+    libjpeg-dev \
+    libfreetype6-dev \
+    cron \
+    supervisor \
+    && rm -rf /var/lib/apt/lists/*
 
-# Enable Apache mod_rewrite
-RUN a2enmod rewrite
-RUN a2enmod headers
+# ==================== PHP EXTENSIONS ====================
+RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install -j$(nproc) \
+    pdo_mysql \
+    mysqli \
+    zip \
+    gd \
+    exif \
+    pcntl
+
+# Enable Apache modules
+RUN a2enmod rewrite headers expires deflate ratelimit
+
+# ==================== APPLICATION SETUP ====================
+WORKDIR /var/www/html
 
 # Copy application files
 COPY . .
 
-# Set proper permissions
-RUN chmod -R 755 /var/www/html
-RUN chown -R www-data:www-data /var/www/html
-RUN chmod 666 users.json movies.csv error.log requests.json bot_stats.json
-RUN mkdir -p backups cache && chmod 777 backups cache
+# Create necessary directories
+RUN mkdir -p cache backups logs \
+    && chown -R www-data:www-data cache backups logs \
+    && chmod -R 755 cache backups logs \
+    && chmod 644 *.php \
+    && chmod 644 *.json *.csv 2>/dev/null || true
 
-# Create empty files if they don't exist
-RUN touch error.log movies.csv users.json bot_stats.json requests.json && \
-    chmod 666 error.log movies.csv users.json bot_stats.json requests.json
+# ==================== ENVIRONMENT CONFIGURATION ====================
+# Copy .env.example to .env (will be overridden by docker-compose or kubernetes secrets)
+COPY .env.example .env
+RUN chmod 600 .env
 
-# Set PHP configuration
-RUN echo "upload_max_filesize = 100M" > /usr/local/etc/php/conf.d/uploads.ini && \
-    echo "post_max_size = 100M" >> /usr/local/etc/php/conf.d/uploads.ini && \
-    echo "memory_limit = 256M" >> /usr/local/etc/php/conf.d/uploads.ini && \
-    echo "max_execution_time = 300" >> /usr/local/etc/php/conf.d/uploads.ini && \
-    echo "session.save_path = /tmp" >> /usr/local/etc/php/conf.d/session.ini && \
-    echo "session.gc_maxlifetime = 1440" >> /usr/local/etc/php/conf.d/session.ini
+# ==================== CRON SETUP ====================
+# Add cron job for backup
+RUN echo "0 3 * * * cd /var/www/html && php -r 'require \"New-MNA-Bot.php\";' > /dev/null 2>&1" | crontab -
 
-# Set ServerName to avoid Apache warning
-RUN echo "ServerName localhost" >> /etc/apache2/apache2.conf
+# ==================== SUPERVISOR CONFIGURATION ====================
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# Expose port 80
+# ==================== HEALTH CHECK ====================
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost/New-MNA-Bot.php?test || exit 1
+
+# ==================== PORTS ====================
 EXPOSE 80
+EXPOSE 443
 
-# Start Apache
-CMD ["apache2-foreground"]
+# ==================== VOLUMES ====================
+VOLUME ["/var/www/html/cache", "/var/www/html/backups", "/var/www/html/logs"]
+
+# ==================== START COMMAND ====================
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

@@ -1,0 +1,34 @@
+{
+    "user_growth": {},
+    "searches": {
+        "total": 0,
+        "popular": {},
+        "by_hour": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+        "by_day": [0,0,0,0,0,0,0]
+    },
+    "movies": {
+        "total": 0,
+        "by_quality": {"1080p": 0, "720p": 0, "480p": 0, "4k": 0, "other": 0},
+        "by_language": {},
+        "by_channel": {},
+        "most_requested": []
+    },
+    "requests": {
+        "total": 0,
+        "approved": 0,
+        "rejected": 0,
+        "pending": 0,
+        "approval_rate": 0,
+        "avg_response_time": 0
+    },
+    "channels": {
+        "performance": {},
+        "health": {}
+    },
+    "system": {
+        "uptime": 1741176000,
+        "memory_peak": 0,
+        "queries_per_second": 0,
+        "cache_hit_rate": 0
+    }
+}

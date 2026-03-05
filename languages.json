@@ -1,0 +1,20 @@
+{
+    "english": {
+        "name": "English",
+        "flag": "🇬🇧",
+        "welcome": "Welcome!",
+        "search": "Searching..."
+    },
+    "hindi": {
+        "name": "हिंदी",
+        "flag": "🇮🇳",
+        "welcome": "स्वागत है!",
+        "search": "खोज रहे हैं..."
+    },
+    "hinglish": {
+        "name": "Hinglish",
+        "flag": "🎭",
+        "welcome": "Swagat hai!",
+        "search": "Dhundh rahe hain..."
+    }
+}
