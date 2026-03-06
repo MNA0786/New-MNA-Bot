@@ -1,0 +1,135 @@
+
+## 📁 **13. `render.yaml` - Updated**
+```yaml
+# ==================== RENDER.COM CONFIGURATION ====================
+# Entertainment Tadka Bot - v4.0
+
+services:
+  - type: web
+    name: entertainment-tadka-bot
+    runtime: docker
+    repo: https://github.com/entertainment-tadka/bot
+    branch: main
+    dockerfilePath: ./Dockerfile
+    
+    # Environment Variables
+    envVars:
+      # Bot Configuration
+      - key: BOT_TOKEN
+        sync: false  # Set manually in Render dashboard
+      - key: BOT_USERNAME
+        value: EntertainmentTadkaBot
+      - key: BOT_ID
+        value: 8315381064
+      
+      # Environment
+      - key: ENVIRONMENT
+        value: production
+      - key: MAINTENANCE_MODE
+        value: false
+      
+      # Admin
+      - key: ADMIN_IDS
+        value: 1080317415
+      
+      # API Credentials
+      - key: API_ID
+        value: 21944581
+      - key: API_HASH
+        value: 7b1c174a5cd3466e25a976c39a791737
+      
+      # Public Channels
+      - key: PUBLIC_CHANNEL_1_ID
+        value: -1003181705395
+      - key: PUBLIC_CHANNEL_1_USERNAME
+        value: '@EntertainmentTadka786'
+      - key: PUBLIC_CHANNEL_2_ID
+        value: -1003614546520
+      - key: PUBLIC_CHANNEL_2_USERNAME
+        value: '@Entertainment_Tadka_Serial_786'
+      - key: PUBLIC_CHANNEL_3_ID
+        value: -1002831605258
+      - key: PUBLIC_CHANNEL_3_USERNAME
+        value: '@threater_print_movies'
+      - key: PUBLIC_CHANNEL_4_ID
+        value: -1002964109368
+      - key: PUBLIC_CHANNEL_4_USERNAME
+        value: '@ETBackup'
+      
+      # Private Channels
+      - key: PRIVATE_CHANNEL_1_ID
+        value: -1003251791991
+      - key: PRIVATE_CHANNEL_1_USERNAME
+        value: 'Private Channel 1'
+      - key: PRIVATE_CHANNEL_2_ID
+        value: -1002337293281
+      - key: PRIVATE_CHANNEL_2_USERNAME
+        value: 'Private Channel 2'
+      
+      # Request Group
+      - key: REQUEST_GROUP_ID
+        value: -1003083386043
+      - key: REQUEST_GROUP_USERNAME
+        value: '@EntertainmentTadka7860'
+      
+      # Request System
+      - key: REQUEST_SYSTEM_ENABLED
+        value: true
+      - key: MAX_REQUESTS_PER_DAY
+        value: 3
+      - key: REPUTATION_THRESHOLD
+        value: 100
+      - key: REPUTATION_BONUS_REQUESTS
+        value: 2
+      
+      # Performance
+      - key: CACHE_EXPIRY
+        value: 300
+      - key: ITEMS_PER_PAGE
+        value: 5
+      
+      # Rate Limiting
+      - key: RATE_LIMIT_REQUESTS
+        value: 30
+      - key: RATE_LIMIT_WINDOW
+        value: 60
+      
+      # Webhook
+      - key: WEBHOOK_URL
+        fromService:
+          name: entertainment-tadka-bot
+          type: web
+          property: url
+    
+    # Health Check
+    healthCheckPath: /
+    
+    # Auto Deploy
+    autoDeploy: true
+    
+    # Instance Type
+    plan: free
+    
+    # Region
+    region: oregon
+    
+    # Custom Domain
+    domains:
+      - entertainment-tadka-bot.onrender.com
+    
+    # Build Filter
+    buildFilter:
+      paths:
+        - index.php
+        - Dockerfile
+        - .env
+      ignoredPaths:
+        - README.md
+        - .gitignore
+        - docker-compose.yml
+    
+    # Disk
+    disk:
+      name: bot-data
+      mountPath: /var/www/html/data
+      sizeGB: 1

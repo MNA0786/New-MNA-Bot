@@ -1,0 +1,171 @@
+# ==================== ENTERTAINMENT TADKA BOT - .HTACCESS ====================
+# Version: 4.0
+# Last Updated: 2024
+
+# Enable rewrite engine
+RewriteEngine On
+
+# Set base directory
+RewriteBase /
+
+# ==================== SECURITY HEADERS ====================
+# Prevent MIME type sniffing
+Header set X-Content-Type-Options "nosniff"
+
+# Prevent clickjacking
+Header set X-Frame-Options "DENY"
+
+# Enable XSS protection
+Header set X-XSS-Protection "1; mode=block"
+
+# Strict Transport Security (HSTS)
+Header set Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+
+# Referrer Policy
+Header set Referrer-Policy "strict-origin-when-cross-origin"
+
+# Content Security Policy (CSP)
+Header set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https://api.telegram.org;"
+
+# ==================== HTTPS REDIRECTION ====================
+# Force HTTPS if not Render internal
+RewriteCond %{HTTP:X-Forwarded-Proto} !https
+RewriteCond %{HTTPS} off
+RewriteCond %{HTTP_HOST} !^localhost
+RewriteCond %{HTTP_HOST} !^127.0.0.1
+RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+# ==================== MAIN REWRITE RULE ====================
+# Redirect all requests to index.php except for existing files/directories
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.php [QSA,L]
+
+# ==================== CORS HANDLING ====================
+# Handle OPTIONS method for CORS
+RewriteCond %{REQUEST_METHOD} OPTIONS
+RewriteRule ^(.*)$ $1 [R=200,L]
+
+# Allow CORS for Telegram API
+Header set Access-Control-Allow-Origin "*"
+Header set Access-Control-Allow-Methods "GET, POST, OPTIONS"
+Header set Access-Control-Allow-Headers "Content-Type"
+
+# ==================== MIME TYPES ====================
+# Set proper content types
+AddType application/json .json
+AddType text/csv .csv
+AddType application/javascript .js
+AddType text/css .css
+AddType image/webp .webp
+
+# ==================== DIRECTORY PROTECTION ====================
+# Disable directory listing
+Options -Indexes
+
+# ==================== FILE PROTECTION ====================
+# Protect hidden files
+<FilesMatch "^\.">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Protect sensitive files
+<FilesMatch "\.(json|csv|log|ini|env|sql|db|bak|backup|txt|md|yml|yaml|lock)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Protect PHP files except index
+<FilesMatch "\.(php|phar)$">
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+</FilesMatch>
+
+# Allow access to index.php only
+<Files "index.php">
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Allow from all
+    </IfModule>
+    <IfModule mod_authz_core.c>
+        Require all granted
+    </IfModule>
+</Files>
+
+# Allow access to .htaccess itself
+<Files ".htaccess">
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Allow from all
+    </IfModule>
+    <IfModule mod_authz_core.c>
+        Require all granted
+    </IfModule>
+</Files>
+
+# ==================== PHP SETTINGS ====================
+<IfModule mod_php8.c>
+    # Session settings
+    php_value session.save_path "/tmp"
+    php_value session.gc_maxlifetime 86400
+    php_value session.cookie_lifetime 0
+    php_value session.use_strict_mode 1
+    php_value session.cookie_httponly 1
+    php_value session.cookie_secure 1
+    php_value session.cookie_samesite "Strict"
+    
+    # File upload limits
+    php_value upload_max_filesize 100M
+    php_value post_max_size 100M
+    
+    # Memory and execution
+    php_value memory_limit 512M
+    php_value max_execution_time 300
+    php_value max_input_time 300
+    
+    # Error reporting (off in production)
+    php_value display_errors 0
+    php_value display_startup_errors 0
+    php_value error_reporting 0
+    
+    # Timezone
+    php_value date.timezone "Asia/Kolkata"
+</IfModule>
+
+# ==================== CACHE CONTROL ====================
+# Cache static files for 7 days
+<FilesMatch "\.(ico|pdf|flv|jpg|jpeg|png|gif|js|css|swf|webp|woff|woff2|ttf|eot)$">
+    Header set Cache-Control "max-age=604800, public, must-revalidate"
+</FilesMatch>
+
+# No cache for dynamic files
+<FilesMatch "\.(php|cgi|pl|json|csv)$">
+    Header set Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+    Header set Pragma "no-cache"
+</FilesMatch>
+
+# ==================== COMPRESSION ====================
+# Enable GZIP compression
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css text/javascript
+    AddOutputFilterByType DEFLATE application/xml application/xhtml+xml application/rss+xml
+    AddOutputFilterByType DEFLATE application/javascript application/x-javascript
+    AddOutputFilterByType DEFLATE application/json application/ld+json
+    AddOutputFilterByType DEFLATE application/x-font-ttf font/opentype image/svg+xml
+</IfModule>
+
+# ==================== ERROR PAGES ====================
+ErrorDocument 400 /index.php?error=400
+ErrorDocument 401 /index.php?error=401
+ErrorDocument 403 /index.php?error=403
+ErrorDocument 404 /index.php?error=404
+ErrorDocument 500 /index.php?error=500
+ErrorDocument 502 /index.php?error=502
+ErrorDocument 503 /index.php?error=503
+ErrorDocument 504 /index.php?error=504

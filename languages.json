@@ -1,0 +1,6 @@
+{
+    "available": ["english", "hindi", "hinglish"],
+    "default": "hinglish",
+    "user_preferences": {},
+    "strings_version": "4.0"
+}

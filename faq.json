@@ -1,0 +1,32 @@
+{
+    "faqs": [
+        {
+            "question": "Movie kaise search karein?",
+            "answer": "Bus movie ka naam likhiye. Example: 'kgf', 'pushpa', 'hindi movie'"
+        },
+        {
+            "question": "Request kaise karein?",
+            "answer": "/request MovieName ya 'pls add MovieName' likhiye"
+        },
+        {
+            "question": "Kitni requests kar sakte hain?",
+            "answer": "3 requests per day. Active users ko bonus requests milte hain."
+        },
+        {
+            "question": "Channels kaise join karein?",
+            "answer": "/start karke buttons se join kar sakte hain."
+        },
+        {
+            "question": "Language kaise change karein?",
+            "answer": "/language command use karein."
+        },
+        {
+            "question": "Movie nahi mili to kya karein?",
+            "answer": "Request karein, approve hote hi mil jayegi."
+        },
+        {
+            "question": "Admin kaise contact karein?",
+            "answer": "Request group mein message karein: @EntertainmentTadka7860"
+        }
+    ]
+}

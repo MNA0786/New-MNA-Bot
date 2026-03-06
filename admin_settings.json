@@ -1,0 +1,31 @@
+{
+    "request_system": {
+        "enabled": true,
+        "max_requests_per_day": 3,
+        "duplicate_check_hours": 24,
+        "auto_approve_enabled": true,
+        "auto_approve_threshold": 80
+    },
+    "maintenance": {
+        "mode": false,
+        "message": "🛠️ Bot under maintenance. Will be back soon!"
+    },
+    "broadcast": {
+        "last_broadcast": null,
+        "total_broadcasts": 0
+    },
+    "backup": {
+        "last_backup": null,
+        "auto_backup_enabled": true,
+        "backup_interval": 86400,
+        "max_backups": 10
+    },
+    "cache": {
+        "last_cleared": null,
+        "expiry": 300
+    },
+    "performance": {
+        "auto_clear_threshold": 2.0,
+        "last_auto_clear": null
+    }
+}

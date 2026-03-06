@@ -1,0 +1,60 @@
+{
+    "public": [
+        {
+            "id": "-1003181705395",
+            "username": "@EntertainmentTadka786",
+            "name": "Main Channel",
+            "type": "public",
+            "movies_count": 0,
+            "last_sync": null
+        },
+        {
+            "id": "-1003614546520",
+            "username": "@Entertainment_Tadka_Serial_786",
+            "name": "Serial Channel",
+            "type": "public",
+            "movies_count": 0,
+            "last_sync": null
+        },
+        {
+            "id": "-1002831605258",
+            "username": "@threater_print_movies",
+            "name": "Theater Prints",
+            "type": "public",
+            "movies_count": 0,
+            "last_sync": null
+        },
+        {
+            "id": "-1002964109368",
+            "username": "@ETBackup",
+            "name": "Backup Channel",
+            "type": "public",
+            "movies_count": 0,
+            "last_sync": null
+        }
+    ],
+    "private": [
+        {
+            "id": "-1003251791991",
+            "username": "Private Channel 1",
+            "name": "Private Channel 1",
+            "type": "private",
+            "movies_count": 0,
+            "last_sync": null
+        },
+        {
+            "id": "-1002337293281",
+            "username": "Private Channel 2",
+            "name": "Private Channel 2",
+            "type": "private",
+            "movies_count": 0,
+            "last_sync": null
+        }
+    ],
+    "request_group": {
+        "id": "-1003083386043",
+        "username": "@EntertainmentTadka7860",
+        "name": "Request Group",
+        "type": "group"
+    }
+}

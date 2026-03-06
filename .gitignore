@@ -1,0 +1,74 @@
+# Dependency directories
+/vendor/
+/node_modules/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Log files
+*.log
+error.log
+php_error.log
+logs/
+
+# Backup files
+*.bak
+*.backup
+backups/
+
+# Data files (keep structure but not data)
+/data/*
+!/data/.gitkeep
+
+# Cache files
+/cache/*
+!/cache/.gitkeep
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+sessions/
+
+# Docker overrides
+docker-compose.override.yml
+
+# Session files
+/tmp/*
+/sessions/*
+
+# Database files (exclude actual data, keep structure)
+*.sqlite
+*.db
+
+# Test files
+tests/_output/
+tests/_support/_generated/
+
+# Composer
+composer.lock
+composer.phar
+
+# Render specific
+render.yaml.bak
+
+# Bot specific
+broadcast_state.json
+pending_reject.json
