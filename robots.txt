@@ -1,4 +1,0 @@
-User-agent: *
-Disallow: /
-
-# Telegram bot - no indexing required
