@@ -53,9 +53,6 @@ RUN a2enmod rewrite \
     && a2enmod expires \
     && a2enmod deflate
 
-# Configure Apache virtual host
-COPY docker/apache-config.conf /etc/apache2/sites-available/000-default.conf
-
 # ==================== PHP CONFIGURATION ====================
 # Create PHP configuration files
 RUN echo "upload_max_filesize = 100M" > /usr/local/etc/php/conf.d/uploads.ini && \
@@ -104,24 +101,30 @@ RUN touch cache/movie_index.json cache/metrics.json && \
 
 # ==================== SUPERVISOR CONFIGURATION ====================
 # Copy supervisor configuration for background tasks
+RUN mkdir -p /etc/supervisor/conf.d/
 COPY docker/supervisor.conf /etc/supervisor/conf.d/bot.conf
 
-# ==================== CRON JOBS ====================
-# Setup cron for maintenance tasks
-RUN echo "0 3 * * * cd /var/www/html && php -r 'require \"index.php\"; echo \"Maintenance run at \".date(\"Y-m-d H:i:s\").\"\\n\";' >> /var/log/cron.log 2>&1" > /etc/cron.d/bot-cron && \
-    chmod 0644 /etc/cron.d/bot-cron && \
-    crontab /etc/cron.d/bot-cron
+# ==================== CRON JOBS - FIXED VERSION ====================
+# Create cron job file properly
+RUN echo '0 3 * * * root cd /var/www/html && php -r "require \"index.php\"; echo \"Maintenance run at \".date(\"Y-m-d H:i:s\").\"\\n\";" >> /var/log/cron.log 2>&1' > /etc/cron.d/bot-cron && \
+    chmod 0644 /etc/cron.d/bot-cron
+
+# Start cron service
+RUN service cron start
+
+# ==================== SET SERVER NAME ====================
+RUN echo "ServerName localhost" >> /etc/apache2/apache2.conf
 
 # ==================== HEALTH CHECK ====================
+COPY docker/healthcheck.sh /usr/local/bin/healthcheck.sh
+RUN chmod +x /usr/local/bin/healthcheck.sh
+
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost/ || exit 1
+    CMD /usr/local/bin/healthcheck.sh
 
 # ==================== PORTS ====================
 EXPOSE 80
 
 # ==================== STARTUP ====================
-# Set ServerName to avoid Apache warning
-RUN echo "ServerName localhost" >> /etc/apache2/apache2.conf
-
 # Start Apache and supervisor
 CMD service cron start && supervisord -c /etc/supervisor/supervisord.conf && apache2-foreground
