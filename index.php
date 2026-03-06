@@ -1,4 +1,9 @@
 <?php
+// File ke bilkul top pe ye add karo (<?php ke baad)
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
 // ==================== CONFIGURATION ====================
 // Environment detection
 $environment = getenv('ENVIRONMENT') ?: 'production';
