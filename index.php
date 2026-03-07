@@ -129,7 +129,11 @@ $ENV_CONFIG = [
     // Security Settings
     'MAINTENANCE_MODE' => (getenv('MAINTENANCE_MODE') === 'true') ? true : false,
     'RATE_LIMIT_REQUESTS' => 30,
-    'RATE_LIMIT_WINDOW' => 60
+    'RATE_LIMIT_WINDOW' => 60,
+
+    // Auto scan settings
+    'LAST_UPDATE_ID_FILE' => 'last_update_id.txt',
+    'SCAN_BATCH_SIZE' => 100,
 ];
 
 if (empty($ENV_CONFIG['BOT_TOKEN']) || $ENV_CONFIG['BOT_TOKEN'] === 'YOUR_BOT_TOKEN_HERE') {
@@ -158,6 +162,8 @@ define('RATE_LIMIT_REQUESTS', $ENV_CONFIG['RATE_LIMIT_REQUESTS']);
 define('RATE_LIMIT_WINDOW', $ENV_CONFIG['RATE_LIMIT_WINDOW']);
 define('REPUTATION_BONUS_REQUESTS', $ENV_CONFIG['REPUTATION_BONUS_REQUESTS']);
 define('REPUTATION_THRESHOLD', $ENV_CONFIG['REPUTATION_THRESHOLD']);
+define('LAST_UPDATE_ID_FILE', $ENV_CONFIG['LAST_UPDATE_ID_FILE']);
+define('SCAN_BATCH_SIZE', $ENV_CONFIG['SCAN_BATCH_SIZE']);
 
 // ==================== SECURITY FUNCTIONS ====================
 function validateInput($input, $type = 'text') {
@@ -472,9 +478,10 @@ class AdminPanel {
                 ],
                 [
                     ['text' => '📁 Backup', 'callback_data' => 'admin_backup'],
-                    ['text' => '📊 Performance', 'callback_data' => 'admin_performance']
+                    ['text' => '🔄 Scan Channels', 'callback_data' => 'admin_scan_channels']
                 ],
                 [
+                    ['text' => '📊 Performance', 'callback_data' => 'admin_performance'],
                     ['text' => '🚪 Close', 'callback_data' => 'admin_close']
                 ]
             ]
@@ -490,6 +497,7 @@ class AdminPanel {
         $message .= "• 📢 Send broadcast message\n";
         $message .= "• ⚙️ Configure settings\n";
         $message .= "• 📁 Backup database\n";
+        $message .= "• 🔄 Scan channels for missed posts\n";
         $message .= "• 📊 Performance metrics";
         
         return ['text' => $message, 'keyboard' => $keyboard];
@@ -969,7 +977,8 @@ function getHinglishResponse($key, $vars = []) {
                   "/checkcsv - CSV data check karo\n" .
                   "/csvstats - CSV statistics\n" .
                   "/language - Bhasha badlo\n" .
-                  "/admin - Admin panel (Admins only)\n\n" .
+                  "/admin - Admin panel (Admins only)\n" .
+                  "/scanchannels - Scan channels for missed posts (Admin only)\n\n" .
                   "🔍 <b>Search kaise karein:</b>\n" .
                   "• Bus movie ka naam likho\n" .
                   "• Thoda sa naam bhi kaafi hai\n" .
@@ -2600,6 +2609,149 @@ function totalupload_controller($chat_id, $page = 1) {
     sendMessage($chat_id, "➡️ Buttons use karo navigate karne ke liye", $keyboard, 'HTML');
 }
 
+// ==================== AUTO CHANNEL SCAN FUNCTION ====================
+function scanMissedChannelPosts() {
+    global $ENV_CONFIG, $csvManager, $requestSystem;
+    
+    $result = [
+        'added' => 0,
+        'skipped' => 0,
+        'errors' => 0,
+        'error_details' => []
+    ];
+    
+    // Temporarily delete webhook to use getUpdates
+    $webhook_deleted = false;
+    $delete_response = apiRequest('deleteWebhook');
+    if ($delete_response === false) {
+        $result['error_details'][] = "Failed to delete webhook. Aborting.";
+        return $result;
+    }
+    $webhook_deleted = true;
+    
+    // Read last processed update_id
+    $last_update_id = 0;
+    if (file_exists(LAST_UPDATE_ID_FILE)) {
+        $last_update_id = (int)file_get_contents(LAST_UPDATE_ID_FILE);
+    }
+    
+    $offset = $last_update_id + 1;
+    $all_updates = [];
+    $has_more = true;
+    
+    // Fetch updates in batches
+    while ($has_more) {
+        $updates = apiRequest('getUpdates', [
+            'offset' => $offset,
+            'limit' => SCAN_BATCH_SIZE,
+            'timeout' => 10,
+            'allowed_updates' => ['channel_post']
+        ]);
+        
+        if ($updates === false) {
+            $result['error_details'][] = "Failed to fetch updates at offset $offset";
+            break;
+        }
+        
+        $updates = json_decode($updates, true);
+        if (!$updates || !isset($updates['ok']) || !$updates['ok']) {
+            $result['error_details'][] = "Invalid response from getUpdates";
+            break;
+        }
+        
+        if (empty($updates['result'])) {
+            $has_more = false;
+        } else {
+            $all_updates = array_merge($all_updates, $updates['result']);
+            // Set offset to next update
+            $last_update = end($updates['result']);
+            $offset = $last_update['update_id'] + 1;
+        }
+    }
+    
+    // Process channel posts
+    $all_channels = array_merge(
+        $ENV_CONFIG['PUBLIC_CHANNELS'] ?? [],
+        $ENV_CONFIG['PRIVATE_CHANNELS'] ?? []
+    );
+    $all_channel_ids = array_column($all_channels, 'id');
+    
+    foreach ($all_updates as $update) {
+        if (isset($update['channel_post'])) {
+            $message = $update['channel_post'];
+            $chat_id = $message['chat']['id'];
+            
+            // Check if this channel is one of ours
+            if (!in_array($chat_id, $all_channel_ids)) {
+                continue;
+            }
+            
+            $message_id = $message['message_id'];
+            
+            // Extract text/caption
+            $text = '';
+            if (isset($message['caption'])) {
+                $text = $message['caption'];
+            } elseif (isset($message['text'])) {
+                $text = $message['text'];
+            } elseif (isset($message['document'])) {
+                $text = $message['document']['file_name'];
+            } else {
+                $text = 'Media Upload - ' . date('d-m-Y H:i', $message['date']);
+            }
+            
+            if (!empty(trim($text))) {
+                // Check if already exists
+                $exists = false;
+                $data = $csvManager->getCachedData();
+                foreach ($data as $item) {
+                    if ($item['message_id'] == $message_id && $item['channel_id'] == $chat_id) {
+                        $exists = true;
+                        break;
+                    }
+                }
+                
+                if (!$exists) {
+                    $csvManager->bufferedAppend($text, $message_id, $chat_id);
+                    $result['added']++;
+                    
+                    // Auto-approve requests
+                    $auto_approved = $requestSystem->smartAutoApprove($text);
+                    foreach ($auto_approved as $req_id) {
+                        $request = $requestSystem->getRequest($req_id);
+                        if ($request) {
+                            notifyUserAboutRequest($request['user_id'], $request, 'approved');
+                        }
+                    }
+                } else {
+                    $result['skipped']++;
+                }
+            }
+        }
+        
+        // Track last processed update_id
+        if ($update['update_id'] > $last_update_id) {
+            $last_update_id = $update['update_id'];
+        }
+    }
+    
+    // Save last processed update_id
+    file_put_contents(LAST_UPDATE_ID_FILE, $last_update_id);
+    
+    // Re-enable webhook
+    if ($webhook_deleted) {
+        $webhook_url = "https://" . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
+        apiRequest('setWebhook', ['url' => $webhook_url]);
+    }
+    
+    // Flush buffer
+    $csvManager->flushBuffer();
+    
+    log_error("Manual channel scan completed", 'INFO', $result);
+    
+    return $result;
+}
+
 // ==================== LEGACY FUNCTIONS ====================
 function check_date($chat_id) {
     $stats = json_decode(file_get_contents(STATS_FILE), true);
@@ -2973,6 +3125,27 @@ if ($update) {
                 $admin_menu = $adminPanel->getAdminMainMenu();
                 sendMessage($chat_id, $admin_menu['text'], $admin_menu['keyboard'], 'HTML');
             }
+            elseif ($command == '/scanchannels') {
+                if (!in_array($user_id, ADMIN_IDS)) {
+                    sendHinglish($chat_id, 'admin_only');
+                    return;
+                }
+                
+                sendChatAction($chat_id, 'typing');
+                sendMessage($chat_id, "🔄 Scanning channels for missed posts... This may take a minute.", null, 'HTML');
+                
+                $result = scanMissedChannelPosts();
+                
+                $msg = "✅ Scan completed!\n\n";
+                $msg .= "📊 New movies added: " . $result['added'] . "\n";
+                $msg .= "⏭️ Skipped (already exist): " . $result['skipped'] . "\n";
+                $msg .= "❌ Errors: " . $result['errors'] . "\n";
+                if (!empty($result['error_details'])) {
+                    $msg .= "\n⚠️ Some errors occurred:\n" . implode("\n", array_slice($result['error_details'], 0, 5));
+                }
+                
+                sendMessage($chat_id, $msg, null, 'HTML');
+            }
             elseif ($command == '/request') {
                 if (!REQUEST_SYSTEM_ENABLED) {
                     sendHinglish($chat_id, 'error', ['message' => 'Request system currently disabled']);
@@ -3163,7 +3336,7 @@ if ($update) {
                         'inline_keyboard' => [
                             [
                                 ['text' => '🎬 Send First Copy', 'callback_data' => 'send_one_' . base64_encode($movie_name)],
-                                ['text' => "📤 Send All {$movie_items[0]['count']} Copies", 'callback_data' => 'send_all_' . base64_encode($movie_name)]
+                                ['text' => "📤 Send All " . count($movie_items) . " Copies", 'callback_data' => 'send_all_' . base64_encode($movie_name)]
                             ],
                             [
                                 ['text' => '🔙 Back to Search', 'callback_data' => 'back_to_search_' . base64_encode($movie_name)]
@@ -3424,6 +3597,32 @@ if ($update) {
                 $pending_view = $adminPanel->getPendingRequestsView($requestSystem, $page);
                 editMessageText($chat_id, $message['message_id'], $pending_view['text'], $pending_view['keyboard'], 'HTML');
                 answerCallbackQuery($query['id'], "Pending requests loaded");
+            }
+            elseif ($data === 'admin_scan_channels') {
+                // Send initial message
+                editMessageText($chat_id, $message['message_id'], "🔄 Scanning channels for missed posts...\nThis may take a few seconds.", null, 'HTML');
+                
+                // Perform scan
+                $result = scanMissedChannelPosts();
+                
+                $msg = "✅ Scan completed!\n\n";
+                $msg .= "📊 New movies added: " . $result['added'] . "\n";
+                $msg .= "⏭️ Skipped (already exist): " . $result['skipped'] . "\n";
+                $msg .= "❌ Errors: " . $result['errors'] . "\n";
+                if (!empty($result['error_details'])) {
+                    $msg .= "\n⚠️ Some errors occurred:\n" . implode("\n", array_slice($result['error_details'], 0, 5));
+                }
+                
+                $keyboard = [
+                    'inline_keyboard' => [
+                        [
+                            ['text' => '🔙 Back to Admin', 'callback_data' => 'admin_main']
+                        ]
+                    ]
+                ];
+                
+                editMessageText($chat_id, $message['message_id'], $msg, $keyboard, 'HTML');
+                answerCallbackQuery($query['id'], "Scan finished");
             }
             elseif ($data === 'admin_broadcast') {
                 $broadcast_view = $adminPanel->getBroadcastInstructions();
@@ -4112,6 +4311,7 @@ header('Content-Type: text/html; charset=utf-8');
             <div class="feature-item">✅ User Reputation System with bonus requests</div>
             <div class="feature-item">✅ Performance Monitoring with auto-cache clear</div>
             <div class="feature-item">✅ Bug fixes: array_column issue resolved</div>
+            <div class="feature-item">✅ Auto Channel Scan (/scanchannels) for missed posts</div>
         </div>
         
         <div class="feature-list">
@@ -4137,6 +4337,7 @@ header('Content-Type: text/html; charset=utf-8');
             <div class="feature-item">✅ File locking for safe concurrent access</div>
             <div class="feature-item">✅ Environment variable configuration</div>
             <div class="feature-item">✅ Interactive Request Guide with Hindi/English instructions</div>
+            <div class="feature-item">✅ Auto Channel Scan for missed posts (admin command)</div>
         </div>
         
         <div style="margin-top: 40px; padding: 25px; background: rgba(255, 255, 255, 0.15); border-radius: 15px;">
@@ -4153,12 +4354,13 @@ header('Content-Type: text/html; charset=utf-8');
                 <li style="margin-bottom: 10px;">Admins: Use /admin to open Admin Panel</li>
                 <li style="margin-bottom: 10px;">Search results mein "Send All Results" button dikhega</li>
                 <li style="margin-bottom: 10px;">Movie select karne par "Send All Copies" button milega</li>
+                <li style="margin-bottom: 10px;">Admins: Use /scanchannels to fetch missed channel posts</li>
             </ol>
         </div>
         
         <footer>
             <p>🎬 Entertainment Tadka Bot | Powered by PHP & Telegram Bot API | Hosted on Render.com</p>
-            <p style="margin-top: 10px; font-size: 0.9em;">© <?php echo date('Y'); ?> - All rights reserved | Secure Version 4.0 | Admin Panel | Performance Monitoring | User Reputation</p>
+            <p style="margin-top: 10px; font-size: 0.9em;">© <?php echo date('Y'); ?> - All rights reserved | Secure Version 4.0 | Admin Panel | Performance Monitoring | User Reputation | Auto Channel Scan</p>
         </footer>
     </div>
 </body>
@@ -4167,5 +4369,5 @@ header('Content-Type: text/html; charset=utf-8');
 // ==================== END OF FILE ====================
 // Features: Movie Search, Request System, Admin Panel, Hinglish Support, 
 // Send All Results, Send All Copies, Database Indexing, Batch Operations,
-// User Reputation System, Performance Monitoring
+// User Reputation System, Performance Monitoring, Auto Channel Scan
 ?>
